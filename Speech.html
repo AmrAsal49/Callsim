@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Voice Chat Demo - Editable Input</title>
+<style>
+    /* ... keep your existing CSS, except replace .transcript-display styles with: */
+    .transcript-display {
+        width: 100%;
+        min-height: 40px;
+        padding: 10px;
+        margin: 10px 20px;
+        font-style: italic;
+        color: #dc2626;
+        border: 1px dashed #ef4444;
+        border-radius: 8px;
+        resize: vertical;
+        font-size: 16px;
+        font-family: inherit;
+    }
+    /* Optional: style focus */
+    .transcript-display:focus {
+        outline: 2px solid #667eea;
+        font-style: normal;
+        color: #334155;
+    }
+</style>
+</head>
+<body>
+<div class="chat-container">
+    <div class="header">
+        <h1>Voice Chat Assistant</h1>
+        <div class="status">
+            <div class="status-indicator" id="statusIndicator"></div>
+            <span id="statusText">Ready</span>
+        </div>
+        <div class="silence-timer" id="silenceTimer">Auto-send in 2s</div>
+    </div>
+
+    <!-- Changed transcript display from div to textarea for editing -->
+    <textarea
+      id="transcriptDisplay"
+      class="transcript-display"
+      placeholder="Listening for your voice..."
+      rows="2"
+      ></textarea>
+
+    <div class="chat-messages" id="chatMessages">
+        <div class="message assistant">
+            👋 Hi! I'm your voice assistant. Click "Start Conversation" to begin talking with me. I'll listen to what you say and respond automatically!
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="btn btn-primary" id="startBtn">
+            🎤 Start Conversation
+        </button>
+        <button class="btn btn-danger" id="stopBtn" disabled>
+            ⏹️ Stop
+        </button>
+        <button class="btn btn-secondary" id="sendBtn" disabled>
+            📤 Send Now
+        </button>
+        
+        <div class="settings">
+            <select id="voiceGender">
+                <option value="female">Female Voice</option>
+                <option value="male">Male Voice</option>
+            </select>
+            <select id="silenceDelay">
+                <option value="1000">1s delay</option>
+                <option value="2000" selected>2s delay</option>
+                <option value="3000">3s delay</option>
+                <option value="5000">5s delay</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<script>
+class VoiceController extends EventTarget {
+    constructor(options = {}) {
+        super();
+        this.config = {
+            silenceDelay: options.silenceDelay || 2000,
+            autoLoop: options.autoLoop !== false,
+            language: options.language || 'en-US',
+            voiceGender: options.voiceGender || 'female',
+            speechRate: options.speechRate || 1.0,
+            speechPitch: options.speechPitch || 1.0,
+            speechVolume: options.speechVolume || 0.8,
+            debug: options.debug || false,
+            ...options
+        };
+
+        this.state = {
+            isListening: false,
+            isSpeaking: false,
+            isProcessing: false,
+            conversationActive: false,
+            currentTranscription: '',
+            lastUserMessage: '',
+            lastAssistantMessage: '',
+            userEditing: false, // track if user is editing textarea
+            lastSentMessage: null, // to prevent duplicates
+        };
+
+        this.silenceTimer = null;
+        this.recognition = null;
+        this.synthesis = window.speechSynthesis;
+        this.currentUtterance = null;
+
+        this.initSpeechRecognition();
+        this.initSpeechSynthesis();
+        this.log('VoiceController initialized');
+    }
+
+    initSpeechRecognition() {
+        if ('webkitSpeechRecognition' in window) {
+            this.recognition = new webkitSpeechRecognition();
+        } else if ('SpeechRecognition' in window) {
+            this.recognition = new SpeechRecognition();
+        } else {
+            this.emit('error', { type: 'recognition_not_supported', message: 'Speech recognition not supported' });
+            return;
+        }
+
+        this.recognition.continuous = true;
+        this.recognition.interimResults = true;
+        this.recognition.lang = this.config.language;
+        this.recognition.maxAlternatives = 1;
+
+        this.recognition.onstart = () => {
+            this.state.isListening = true;
+            this.log('Speech recognition started');
+            this.emit('listening_started');
+        };
+
+        this.recognition.onresult = (event) => {
+            this.handleSpeechResult(event);
+        };
+
+        this.recognition.onerror = (event) => {
+            this.log(`Speech recognition error: ${event.error}`);
+            this.emit('recognition_error', { error: event.error });
+            if (event.error === 'no-speech' && this.config.autoLoop) {
+                this.restartListening();
+            }
+        };
+
+        this.recognition.onend = () => {
+            this.state.isListening = false;
+            this.log('Speech recognition ended');
+            this.emit('listening_stopped');
+            if (this.state.conversationActive && this.config.autoLoop && !this.state.isSpeaking) {
+                setTimeout(() => this.startListening(), 500);
+            }
+        };
+    }
+
+    initSpeechSynthesis() {
+        if (this.synthesis.onvoiceschanged !== undefined) {
+            this.synthesis.onvoiceschanged = () => {
+                this.selectVoice();
+            };
+        }
+        this.selectVoice();
+    }
+
+    handleSpeechResult(event) {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+                finalTranscript += transcript;
+            } else {
+                interimTranscript += transcript;
+            }
+        }
+
+        // If user is editing manually, ignore interim/final updates (pause auto-send)
+        if (this.state.userEditing) {
+            this.log('User editing - ignoring speech recognition updates');
+            return;
+        }
+
+        // Combine final + interim transcripts for live update
+        const combinedTranscript = finalTranscript + interimTranscript;
+        this.state.currentTranscription = combinedTranscript;
+
+        // Emit transcription update with isFinal flag only if final exists
+        this.emit('transcription_update', {
+            text: combinedTranscript,
+            isFinal: finalTranscript.length > 0,
+            interim: interimTranscript
+        });
+
+        // Reset silence timer only if user not editing
+        if (combinedTranscript) {
+            this.resetSilenceTimer();
+        }
+    }
+
+    startConversation() {
+        this.state.conversationActive = true;
+        this.state.lastSentMessage = null;
+        this.log('Conversation started');
+        this.emit('conversation_started');
+        this.startListening();
+    }
+
+    stopConversation() {
+        this.state.conversationActive = false;
+        this.stopListening();
+        this.stopSpeaking();
+        this.clearSilenceTimer();
+        this.state.userEditing = false;
+        this.log('Conversation stopped');
+        this.emit('conversation_stopped');
+    }
+
+    startListening() {
+        if (!this.recognition) {
+            this.emit('error', { type: 'no_recognition', message: 'Speech recognition not available' });
+            return;
+        }
+        if (this.state.isListening || this.state.isSpeaking) return; // Don't start if already active
+
+        try {
+            this.state.currentTranscription = '';
+            this.recognition.start();
+            this.log('Started listening');
+        } catch (error) {
+            this.log(`Error starting recognition: ${error.message}`);
+            this.emit('error', { type: 'start_listening_failed', message: error.message });
+        }
+    }
+
+    stopListening() {
+        if (this.recognition && this.state.isListening) {
+            this.recognition.stop();
+            this.clearSilenceTimer();
+            this.log('Stopped listening');
+        }
+    }
+
+    restartListening() {
+        this.log('Restarting listening...');
+        setTimeout(() => {
+            if (this.state.conversationActive && !this.state.isSpeaking) {
+                this.startListening();
+            }
+        }, 1000);
+    }
+
+    resetSilenceTimer() {
+        if (this.state.userEditing) {
+            // Don't reset if user is editing manually
+            return;
+        }
+        this.clearSilenceTimer();
+        this.emit('silence_timer_reset');
+
+        this.silenceTimer = setTimeout(() => {
+            this.emit('silence_detected');
+            // Double-check transcription is not empty & hasn't been sent already
+            if (this.state.currentTranscription.trim() && this.state.currentTranscription.trim() !== this.state.lastSentMessage) {
+                this.processUserMessage(this.state.currentTranscription.trim());
+            }
+        }, this.config.silenceDelay);
+    }
+
+    clearSilenceTimer() {
+        if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+            this.silenceTimer = null;
+        }
+    }
+
+    async processUserMessage(message) {
+        if (!message || message === this.state.lastSentMessage) {
+            this.log('Ignoring duplicate or empty message');
+            return;
+        }
+        this.state.lastSentMessage = message;
+        this.state.lastUserMessage = message;
+        this.state.currentTranscription = '';
+        this.state.isProcessing = true;
+        this.state.userEditing = false; // reset editing state on send
+
+        this.log(`Processing user message: "${message}"`);
+        this.emit('user_message', { message });
+        this.emit('processing_started');
+
+        this.stopListening();
+
+        try {
+            const response = await this.generateResponse(message);
+            if (response) {
+                this.state.lastAssistantMessage = response;
+                this.emit('assistant_message', { message: response });
+                await this.speak(response);
+            }
+        } catch (error) {
+            this.log(`Error processing message: ${error.message}`);
+            this.emit('error', { type: 'processing_failed', message: error.message });
+        } finally {
+            this.state.isProcessing = false;
+            this.emit('processing_finished');
+        }
+    }
+
+    async generateResponse(userMessage) {
+        const responses = [
+            "That's really interesting! Tell me more about that.",
+            "I understand what you're saying. How does that affect you?",
+            "Thanks for sharing that with me. What are your thoughts on it?",
+            "That's a great point. Can you give me more details?",
+            "I see what you mean. What would you like to explore next?",
+            "That sounds important to you. How long have you felt this way?",
+            "Interesting perspective! What led you to that conclusion?",
+            "I'd love to hear more about your experience with that."
+        ];
+        await this.delay(800 + Math.random() * 1200);
+        const response = responses[Math.floor(Math.random() * responses.length)];
+        this.log(`Generated response: "${response}"`);
+        return response;
+    }
+
+    speak(text) {
+        return new Promise((resolve, reject) => {
+            if (this.state.isListening) {
+                this.stopListening();
+            }
+            if (this.synthesis.speaking) {
+                this.synthesis.cancel();
+            }
+
+            this.currentUtterance = new SpeechSynthesisUtterance(text);
+            this.currentUtterance.voice = this.selectedVoice;
+            this.currentUtterance.rate = this.config.speechRate;
+            this.currentUtterance.pitch = this.config.speechPitch;
+            this.currentUtterance.volume = this.config.speechVolume;
+
+            this.currentUtterance.onstart = () => {
+                this.state.isSpeaking = true;
+                this.log(`Started speaking: "${text}"`);
+                this.emit('speaking_started', { text });
+            };
+
+            this.currentUtterance.onend = () => {
+                this.state.isSpeaking = false;
+                this.log('Finished speaking');
+                this.emit('speaking_finished', { text });
+                if (this.state.conversationActive) {
+                    setTimeout(() => this.startListening(), 500);
+                }
+                resolve();
+            };
+
+            this.currentUtterance.onerror = (event) => {
+                this.state.isSpeaking = false;
+                this.log(`Speech synthesis error: ${event.error}`);
+                this.emit('speaking_error', { error: event.error });
+                reject(new Error(event.error));
+            };
+
+            this.synthesis.speak(this.currentUtterance);
+        });
+    }
+
+    stopSpeaking() {
+        if (this.synthesis.speaking) {
+            this.synthesis.cancel();
+            this.state.isSpeaking = false;
+            this.log('Stopped speaking');
+            this.emit('speaking_stopped');
+        }
+    }
+
+    selectVoice() {
+        const voices = this.synthesis.getVoices();
+        let preferredVoice = voices.find(voice => {
+            const name = voice.name.toLowerCase();
+            if (this.config.voiceGender === 'female') {
+                return name.includes('female') || name.includes('woman') || name.includes('zira') || name.includes('google us english');
+            } else {
+                return name.includes('male') || name.includes('man') || name.includes('david') || name.includes('google us english male');
+            }
+        });
+        if (!preferredVoice && voices.length > 0) {
+            preferredVoice = voices[0];
+        }
+        this.selectedVoice = preferredVoice || null;
+        this.log(`Selected voice: ${this.selectedVoice ? this.selectedVoice.name : 'none'}`);
+    }
+
+    delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    log(msg) {
+        if (this.config.debug) {
+            console.log(`[VoiceController] ${msg}`);
+        }
+    }
+
+    emit(eventName, detail) {
+        this.dispatchEvent(new CustomEvent(eventName, { detail }));
+    }
+}
+
+// === UI Logic ===
+const vc = new VoiceController({ debug: false, silenceDelay: 2000 });
+
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const sendBtn = document.getElementById('sendBtn');
+const chatMessages = document.getElementById('chatMessages');
+const transcriptDisplay = document.getElementById('transcriptDisplay');
+const statusText = document.getElementById('statusText');
+const statusIndicator = document.getElementById('statusIndicator');
+const silenceTimerElem = document.getElementById('silenceTimer');
+const voiceGenderSelect = document.getElementById('voiceGender');
+const silenceDelaySelect = document.getElementById('silenceDelay');
+
+function addMessage(text, sender = 'assistant', isTranscription = false) {
+    const div = document.createElement('div');
+    div.classList.add('message');
+    if (isTranscription) {
+        div.classList.add('transcription');
+    } else {
+        div.classList.add(sender);
+    }
+    div.textContent = text;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Button events
+startBtn.onclick = () => {
+    vc.startConversation();
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    sendBtn.disabled = false;
+    statusText.textContent = 'Listening...';
+    statusIndicator.className = 'status-indicator listening';
+    transcriptDisplay.disabled = false;
+    transcriptDisplay.value = '';
+    transcriptDisplay.focus();
+};
+
+stopBtn.onclick = () => {
+    vc.stopConversation();
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    sendBtn.disabled = true;
+    statusText.textContent = 'Stopped';
+    statusIndicator.className = 'status-indicator';
+    transcriptDisplay.disabled = true;
+    transcriptDisplay.value = '';
+};
+
+sendBtn.onclick = () => {
+    sendTranscriptManually();
+};
+
+function sendTranscriptManually() {
+    const message = transcriptDisplay.value.trim();
+    if (message) {
+        vc.processUserMessage(message);
+        transcriptDisplay.value = '';
+        vc.state.userEditing = false;
+        sendBtn.disabled = true;
+    }
+}
+
+// Voice gender and silence delay
+voiceGenderSelect.onchange = (e) => {
+    vc.config.voiceGender = e.target.value;
+    vc.selectVoice();
+};
+
+silenceDelaySelect.onchange = (e) => {
+    vc.config.silenceDelay = parseInt(e.target.value, 10);
+    silenceTimerElem.textContent = `Auto-send in ${e.target.value / 1000}s`;
+};
+
+// Transcript updates from voice controller
+vc.addEventListener('transcription_update', (e) => {
+    const { text, isFinal } = e.detail;
+    if (!vc.state.userEditing) {
+        transcriptDisplay.value = text || '';
+    }
+    // Only add message on final *if* not user editing
+    if (isFinal && !vc.state.userEditing) {
+        // Don't add final transcript as chat message here; wait for send
+    }
+});
+
+// When user message event fires, add user message bubble
+vc.addEventListener('user_message', (e) => {
+    addMessage(e.detail.message, 'user');
+});
+
+// When assistant message event fires, add assistant bubble
+vc.addEventListener('assistant_message', (e) => {
+    addMessage(e.detail.message, 'assistant');
+});
+
+// Status indicator events
+vc.addEventListener('listening_started', () => {
+    statusText.textContent = 'Listening...';
+    statusIndicator.className = 'status-indicator listening';
+    sendBtn.disabled = false;
+});
+
+vc.addEventListener('listening_stopped', () => {
+    statusText.textContent = 'Paused';
+    statusIndicator.className = 'status-indicator';
+});
+
+vc.addEventListener('speaking_started', () => {
+    statusText.textContent = 'Speaking...';
+    statusIndicator.className = 'status-indicator speaking';
+    sendBtn.disabled = true;
+});
+
+vc.addEventListener('speaking_finished', () => {
+    statusText.textContent = 'Listening...';
+    statusIndicator.className = 'status-indicator listening';
+    sendBtn.disabled = false;
+});
+
+vc.addEventListener('silence_timer_reset', () => {
+    silenceTimerElem.classList.add('active');
+});
+
+vc.addEventListener('silence_detected', () => {
+    silenceTimerElem.classList.remove('active');
+});
+
+// Handle user editing in textarea
+transcriptDisplay.addEventListener('input', () => {
+    // Mark user as editing, disable auto-send silence timer
+    vc.state.userEditing = true;
+    vc.clearSilenceTimer();
+    sendBtn.disabled = transcriptDisplay.value.trim() === '';
+});
+
+// Send on Enter (but allow Shift+Enter for newline)
+transcriptDisplay.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (transcriptDisplay.value.trim()) {
+            sendTranscriptManually();
+        }
+    }
+});
+
+</script>
+
+</body>
+</html>
