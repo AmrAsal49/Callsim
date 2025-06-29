@@ -15,12 +15,12 @@
       --accent-color: #1a6cd0;
       --success-color: #10b981;
       --error-color: #ef4444;
-      --quality-bg: #2d2d2d; /* Darker background for quality panel */
+      --quality-bg: #2d2d2d;
       --quality-border: #444;
-      --quality-score-good: #10b981; /* Green for good score */
-      --quality-score-bad: #ef4444; /* Red for bad score */
-      --quality-score-neutral: #f59e0b; /* Amber for neutral/needs improvement */
-      color-scheme: dark;  /* Tells browser this is a dark theme */
+      --quality-score-good: #10b981;
+      --quality-score-bad: #ef4444;
+      --quality-score-neutral: #f59e0b;
+      color-scheme: dark;
     }
 
     body {
@@ -36,17 +36,17 @@
 
     .main-layout {
       flex: 1;
-      max-width: 1200px; /* Increased max-width to accommodate two columns */
+      max-width: 1200px;
       margin: 1rem auto;
       width: 100%;
       display: flex;
-      gap: 1rem; /* Gap between chat and quality panel */
+      gap: 1rem;
       height: calc(100vh - 2rem);
-      flex-direction: row; /* Default for desktop */
+      flex-direction: row;
     }
 
     .container {
-      flex: 2.5; /* Chat container takes more space */
+      flex: 2.5;
       display: flex;
       flex-direction: column;
       position: relative;
@@ -57,7 +57,7 @@
     }
 
     .quality-panel-wrapper {
-      flex: 1.5; /* Quality panel wrapper takes less space */
+      flex: 1.5;
       display: flex;
       flex-direction: column;
       gap: 1rem;
@@ -71,7 +71,7 @@
       display: flex;
       flex-direction: column;
       border: 1px solid var(--quality-border);
-      flex: 2; /* Increased flex to make it bigger */
+      flex: 2;
     }
 
     .quality-panel h2 {
@@ -85,7 +85,7 @@
     .quality-feedback-content {
       flex: 1;
       overflow-y: auto;
-      padding-right: 0.5rem; /* For scrollbar space */
+      padding-right: 0.5rem;
     }
 
     .quality-comment {
@@ -97,7 +97,7 @@
       font-size: 0.9rem;
       line-height: 1.4;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      position: relative; /* For info button positioning */
+      position: relative;
     }
 
     .quality-comment.good { border-color: var(--quality-score-good); }
@@ -124,7 +124,6 @@
       background: rgba(255,255,255,0.3);
     }
 
-    /* Info button for quality feedback */
     .quality-info-btn {
         position: absolute;
         top: 0.5rem;
@@ -154,7 +153,7 @@
         margin-bottom: 1rem;
       }
       .quality-panel, .s4-progress-panel {
-        height: auto; /* Allow height to adjust on mobile */
+        height: auto;
       }
     }
 
@@ -177,6 +176,41 @@
       font-size: 1.5rem;
       font-weight: 600;
       letter-spacing: -0.02em;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #6b7280;
+    }
+
+    .status-indicator.listening {
+      background: #10b981;
+      animation: pulse 1.5s infinite;
+    }
+
+    .status-indicator.speaking {
+      background: #ef4444;
+      animation: pulse 1.5s infinite;
+    }
+
+    .silence-timer {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      display: none;
+    }
+
+    .silence-timer.active {
+      display: inline;
     }
 
     .chat-container {
@@ -207,8 +241,7 @@
       transition: all 0.2s ease-out;
     }
 
-    /* Typing indicator animation */
-    .message.user:not(.sent)::after {
+    .message.transcription:not(.sent)::after {
       content: '';
       display: inline-block;
       width: 4px;
@@ -228,7 +261,7 @@
       margin-left: 2rem;
     }
 
-    .message.ai {
+    .message.assistant {
       align-self: flex-start;
       background: var(--bg-message-ai);
       color: var(--text-main);
@@ -254,7 +287,17 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Custom scrollbar for Webkit browsers */
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
     .chat-container::-webkit-scrollbar, .quality-feedback-content::-webkit-scrollbar {
       width: 8px;
     }
@@ -289,14 +332,13 @@
       justify-content: center;
     }
 
-    .control-button {
+    .btn {
       display: flex;
       align-items: center;
       gap: 0.5rem;
       padding: 0.8rem 1.2rem;
       border: none;
       border-radius: 24px;
-      background: var(--accent-color);
       color: white;
       cursor: pointer;
       font-size: 1rem;
@@ -306,101 +348,79 @@
       backdrop-filter: blur(4px);
     }
 
-    .control-button:hover:not(:disabled) {
-      background: #006cbd;
+    .btn-primary {
+      background: var(--accent-color);
     }
 
-    .control-button:disabled {
+    .btn-primary:hover:not(:disabled) {
+      background: #006cbd;
+      transform: translateY(-1px);
+    }
+
+    .btn-danger {
+      background: #ef4444;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: #dc2626;
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: #6b7280;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: #4b5563;
+      transform: translateY(-1px);
+    }
+
+    .btn:disabled {
       background: #cccccc;
       cursor: not-allowed;
       opacity: 0.7;
     }
 
-    .control-button .button-icon {
+    .btn .button-icon {
       font-size: 1.2rem;
     }
 
-    .record-button {
-      background: #10b981;
+    .transcript-display {
+      width: 100%;
+      min-height: 40px;
+      padding: 10px;
+      margin: 10px 20px;
+      font-style: italic;
+      color: #dc2626;
+      border: 1px dashed #ef4444;
+      border-radius: 8px;
+      resize: vertical;
+      font-size: 16px;
+      font-family: inherit;
     }
 
-    .record-button:hover:not(:disabled) {
-      background: #059669;
-      transform: translateY(-1px);
+    .transcript-display:focus {
+      outline: 2px solid #667eea;
+      font-style: normal;
+      color: #334155;
     }
 
-    .record-button.recording {
-      background: #ef4444;
-      animation: pulse 1.5s infinite;
-    }
-
-    .mute-button {
-      background: #6b7280;
-    }
-
-    .mute-button:hover:not(:disabled) {
-      background: #4b5563;
-    }
-
-    .mute-button.muted {
-      background: #ef4444;
-    }
-
-    .cancel-button {
-      background: #ef4444;
-    }
-
-    .cancel-button:hover:not(:disabled) {
-      background: #dc2626;
-      transform: translateY(-1px);
-    }
-
-    .control-button:hover:not(:disabled) {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-
-    @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-      70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-    }
-
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-    }
-
-    .status-bar {
-      background: rgba(0,0,0,0.03);
-      padding: 0.5rem;
-      border-radius: 12px;
-      margin-top: 0.5rem;
+    .settings {
       display: flex;
-      align-items: center;
+      gap: 1rem;
       justify-content: center;
-      gap: 0.5rem;
+      margin-top: 0.5rem;
     }
 
-    .mic-button:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-    }
-
-    .status {
-      flex: 1;
-      text-align: center;
-      color: var(--text-secondary);
+    .settings select {
+      padding: 0.5rem;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #181c22;
+      color: #fff;
       font-size: 0.9rem;
     }
 
-    #loader {
-      display: none;
-      color: var(--accent-color);
-      font-size: 0.9rem;
-    }
-
-    /* Modal styles */
     .modal {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
@@ -428,7 +448,7 @@
       display: flex;
       flex-direction: column;
       gap: 1rem;
-      position: relative; /* For close button positioning */
+      position: relative;
     }
     .modal-content label {
       display: flex;
@@ -484,7 +504,6 @@
       color: var(--text-main);
     }
 
-    /* S4 Progress Panel */
     .s4-progress-panel {
         background: var(--quality-bg);
         box-shadow: 0 2px 12px rgba(0,0,0,0.3);
@@ -494,7 +513,7 @@
         flex-direction: column;
         gap: 1rem;
         border: 1px solid var(--quality-border);
-        flex: 1; /* Reduced flex to make it smaller */
+        flex: 1;
     }
 
     .s4-progress-panel h2 {
@@ -516,11 +535,11 @@
     }
 
     .s4-phase.active {
-        background: rgba(26, 108, 208, 0.2); /* Light blue for active */
+        background: rgba(26, 108, 208, 0.2);
         border: 1px solid var(--accent-color);
     }
     .s4-phase.completed {
-        background: rgba(16, 185, 129, 0.2); /* Light green for completed */
+        background: rgba(16, 185, 129, 0.2);
         border: 1px solid var(--success-color);
     }
 
@@ -528,17 +547,17 @@
         width: 18px;
         height: 18px;
         border-radius: 50%;
-        background-color: #555; /* Default grey */
+        background-color: #555;
         box-shadow: 0 0 5px rgba(0,0,0,0.5);
         transition: background-color 0.3s ease, box-shadow 0.3s ease;
     }
 
     .s4-phase.active .s4-indicator-bulb {
-        background-color: var(--accent-color); /* Neon blue */
+        background-color: var(--accent-color);
         box-shadow: 0 0 8px var(--accent-color), 0 0 15px var(--accent-color);
     }
     .s4-phase.completed .s4-indicator-bulb {
-        background-color: var(--success-color); /* Neon green */
+        background-color: var(--success-color);
         box-shadow: 0 0 8px var(--success-color), 0 0 15px var(--success-color);
     }
 
@@ -557,11 +576,19 @@
         color: var(--text-secondary);
         margin-top: 0.2rem;
     }
+
+    .modal-buttons {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      z-index: 200;
+      display: flex;
+      gap: 0.5rem;
+    }
   </style>
 </head>
 <body>
   <div class="main-layout">
-    <!-- Quality and S4 panel wrapper - now on the left -->
     <div class="quality-panel-wrapper">
       <div class="quality-panel">
         <h2>Quality Feedback</h2>
@@ -607,53 +634,60 @@
     <div class="container">
       <div class="header">
         <h1>Call Simulator 🎧</h1>
+        <div class="status">
+          <div class="status-indicator" id="statusIndicator"></div>
+          <span id="statusText">Ready</span>
+        </div>
+        <div class="silence-timer" id="silenceTimer">Auto-send in 2s</div>
       </div>
+      <textarea
+        id="transcriptDisplay"
+        class="transcript-display"
+        placeholder="Listening for your voice..."
+        rows="2"
+        disabled
+      ></textarea>
       <div class="chat-container" id="chat">
         <div class="messages">
-          <!-- Initial message will be added by startNewRolePlay() -->
+          <div class="message assistant">
+            👋 Hi! I'm your call simulator. Click "Start Conversation" to begin the call.
+          </div>
         </div>
       </div>
       <div class="controls">
         <div class="button-group">
-          <button class="control-button record-button" id="mic-btn" title="Start/Stop recording">
+          <button class="btn btn-primary" id="startBtn">
             <span class="button-icon">🎤</span>
-            <span class="button-text">Hold to Talk</span>
+            <span class="button-text">Start Conversation</span>
           </button>
-          <button class="control-button mute-button" id="mute-btn" title="Mute/Unmute microphone">
-            <span class="button-icon">🔊</span>
-            <span class="button-text">Mute</span>
+          <button class="btn btn-danger" id="stopBtn" disabled>
+            <span class="button-icon">⏹️</span>
+            <span class="button-text">Stop</span>
           </button>
-          <button class="control-button send-button" id="send-btn" disabled title="Send message">
+          <button class="btn btn-secondary" id="sendBtn" disabled>
             <span class="button-icon">📤</span>
-            <span class="button-text">Send</span>
-          </button>
-          <button class="control-button cancel-button" id="cancel-btn" disabled title="Cancel recording">
-            <span class="button-icon">❌</span>
-            <span class="button-text">Cancel</span>
-          </button>
-          <button class="control-button" id="save-call-btn" title="Save current call">
-            <span class="button-icon">💾</span>
-            <span class="button-text">Save Call</span>
+            <span class="button-text">Send Now</span>
           </button>
         </div>
-        <div class="status-bar">
-          <div class="status" id="status">Click microphone to start</div>
-          <div id="loader">⏳ Processing...</div>
+        <div class="settings">
+          <select id="silenceDelay">
+            <option value="1000">1s delay</option>
+            <option value="2000" selected>2s delay</option>
+            <option value="3000">3s delay</option>
+            <option value="5000">5s delay</option>
+          </select>
         </div>
       </div>
-
-      <!-- Modal open buttons (positioned absolutely within the main container) -->
-      <div class="modal-buttons" style="position:absolute;top:1rem;right:1rem;z-index:200;">
-        <button id="open-settings" class="control-button" style="background: #4b5563; padding: 0.5rem; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;" title="Settings">⚙️</button>
-        <button id="open-persona" class="control-button" style="background: #4b5563; padding: 0.5rem; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; margin-left: 0.5rem;" title="Persona">🧑‍💼</button>
+      <div class="modal-buttons">
+        <button id="open-settings" class="btn btn-secondary" style="padding: 0.5rem; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;" title="Settings">⚙️</button>
+        <button id="open-persona" class="btn btn-secondary" style="padding: 0.5rem; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;" title="Persona">🧑‍💼</button>
       </div>
     </div>
   </div>
 
-  <!-- Generic Modal Structure -->
   <div id="genericModal" class="modal">
     <div class="modal-content">
-      <button class="modal-close-button" id="closeModalBtn">&times;</button>
+      <button class="modal-close-button" id="closeModalBtn">×</button>
       <h3 id="modalTitle" style="font-size: 1.2rem; font-weight: 600; margin-bottom: 1rem;"></h3>
       <div id="modalBody"></div>
       <div class="modal-actions">
@@ -663,275 +697,540 @@
     </div>
   </div>
 
-  <!-- Include Firebase SDKs -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-    // Global Firebase variables
-    let app;
-    let db;
-    let auth;
-    let userId = 'anonymous'; // Default to anonymous
-
-    // Access global variables provided by the Canvas environment
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; // Corrected initialization
-
-    // Initialize Firebase and authenticate
-    if (firebaseConfig) {
-        app = initializeApp(firebaseConfig);
-        db = getFirestore(app);
-        auth = getAuth(app);
-
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                userId = user.uid;
-                console.log("Firebase authenticated. User ID:", userId);
-            } else {
-                console.log("Firebase not authenticated. Attempting anonymous sign-in.");
-                try {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                        userId = auth.currentUser.uid;
-                        console.log("Signed in with custom token. User ID:", userId);
-                    } else {
-                        await signInAnonymously(auth);
-                        userId = auth.currentUser.uid;
-                        console.log("Signed in anonymously. User ID:", userId);
-                    }
-                } catch (error) {
-                    console.error("Firebase authentication failed:", error);
-                    // Fallback to a random UUID if anonymous sign-in fails (e.g., no internet)
-                    userId = crypto.randomUUID();
-                    console.warn("Using a random UUID as userId due to authentication failure:", userId);
-                }
-            }
-        });
-    } else {
-        console.warn("Firebase config not found. Call saving will not be available.");
-        userId = crypto.randomUUID(); // Generate a random ID if Firebase isn't configured
-        document.getElementById('save-call-btn').disabled = true;
-    }
-
-    // Make Firebase instances and userId available to the global scope
-    window.firebaseApp = app;
-    window.firebaseDb = db;
-    window.firebaseAuth = auth;
-    window.currentUserId = userId; // This will be updated by onAuthStateChanged
-    window.getUserId = () => userId; // Provide a getter for the current userId
-
-    // Expose Firestore FieldValue for serverTimestamp
-    window.firebase = {
-        firestore: {
-            FieldValue: {
-                serverTimestamp: serverTimestamp
-            }
-        }
-    };
-  </script>
-
-  <!-- Include complains.js BEFORE the main script -->
   <script src="complaints.js"></script>
 
   <script>
-    // SpeechService Class (from previous 'both.txt' content)
-    class SpeechService {
-        constructor() {
-            this.synthesis = window.speechSynthesis;
-            this.voices = [];
-            this.isSpeaking = false;
-            this.volume = 0.8; // Default volume, can be updated via setVolume
-            
-            if (this.synthesis) {
-                this.synthesis.onvoiceschanged = () => {
-                    this.voices = this.synthesis.getVoices();
-                    console.log('Voices loaded:', this.voices.length);
-                };
-                this.voices = this.synthesis.getVoices(); // Try to load immediately
+    class VoiceController extends EventTarget {
+      constructor(options = {}) {
+        super();
+        this.config = {
+          silenceDelay: options.silenceDelay || 2000,
+          autoLoop: options.autoLoop !== false,
+          language: options.language || 'en-US',
+          voiceGender: options.voiceGender || 'female',
+          speechRate: options.speechRate || 0.9,
+          speechPitch: options.speechPitch || 1.0,
+          speechVolume: options.speechVolume || 0.8,
+          debug: options.debug || true,
+          ...options
+        };
+
+        this.state = {
+          isListening: false,
+          isSpeaking: false,
+          isProcessing: false,
+          conversationActive: false,
+          currentTranscription: '',
+          lastUserMessage: '',
+          lastAssistantMessage: '',
+          userEditing: false,
+          lastSentMessage: null,
+          currentScenario: null,
+          currentS4Phase: 'S1',
+          chatHistory: [],
+          qualityFeedbackHistory: []
+        };
+
+        this.silenceTimer = null;
+        this.recognition = null;
+        this.synthesis = window.speechSynthesis;
+        this.currentUtterance = null;
+        this.scenarios = window.COMPLAINTS_DATA || [
+          {
+            customerName: "Default Customer",
+            initialCustomerComplaint: "I have an issue with my service.",
+            customerGender: "male",
+            customerTemperature: 0.7,
+            customerTopK: 40,
+            customerTopP: 0.8,
+            customerMaxOutputTokens: 100
+          }
+        ];
+
+        this.customerPersona = "You are a Comcast customer with a billing inquiry. You are slightly frustrated but polite. Respond concisely. Ensure your responses have variance and do not sound robotic.";
+        this.qualityAssistantPersona = "You are an S4 Quality Assurance Specialist. Evaluate the agent's last response based on the S4 guidelines provided. Focus on Start, Solve, Sell, Summarize, and Foundational Behaviors.";
+        this.flowManagerPersona = "You are a Call Flow Manager AI. Your role is to guide the agent through the S4 call flow. Based on the conversation history and the current S4 phase, provide a subtle suggestion or prompt to help the agent progress or conclude the call. Your tone should be helpful and encouraging, not critical.";
+
+        this.S4_GUIDELINES_SUMMARY = `
+S4 Universal Call Flow:
+- S1: Start (Greeting, Reflect Reason, Relate/Empathize, Take Ownership, Authenticate/Set Agenda)
+- S2: Solve (Obtain Info/Probe, Resolve Issue, Build Value/Promote)
+- S3: Sell (Transition to Offer, Present Offer, Overcome Objections, Proactively Close Sale)
+- S4: Summarize (Summarize Actions, Close Contact, Documentation)
+Foundational Behaviors: Tone, Confidence, Clarity; Active Listening; Contact Management; Acknowledge/Take Responsibility; Build Rapport/Demonstrate Concern.
+Scoring: Highly Effective (HE) gives more points than Meets Expectations (ME). Below Expectations (BE) gives 0 points.
+Critical Failures: Auto-Fail (e.g., Rudeness, Inappropriate Transfer) results in 0 overall. Section Failure (e.g., Authentication failure) results in 0 for that section.
+        `;
+
+        this.initSpeechRecognition();
+        this.initSpeechSynthesis();
+        this.log('VoiceController initialized');
+
+        // Debug complaints.js loading
+        if (!window.COMPLAINTS_DATA) {
+          this.log("COMPLAINTS_DATA is undefined. Using fallback scenario.");
+        } else {
+          this.log(`COMPLAINTS_DATA loaded successfully with ${window.COMPLAINTS_DATA.length} scenarios.`);
+        }
+      }
+
+      initSpeechRecognition() {
+        if ('webkitSpeechRecognition' in window) {
+          this.recognition = new webkitSpeechRecognition();
+        } else if ('SpeechRecognition' in window) {
+          this.recognition = new SpeechRecognition();
+        } else {
+          this.emit('error', { type: 'recognition_not_supported', message: 'Speech recognition not supported' });
+          return;
+        }
+
+        this.recognition.continuous = true;
+        this.recognition.interimResults = true;
+        this.recognition.lang = this.config.language;
+        this.recognition.maxAlternatives = 1;
+
+        this.recognition.onstart = () => {
+          this.state.isListening = true;
+          this.log('Speech recognition started');
+          this.emit('listening_started');
+        };
+
+        this.recognition.onresult = (event) => {
+          this.handleSpeechResult(event);
+        };
+
+        this.recognition.onerror = (event) => {
+          this.log(`Speech recognition error: ${event.error}`);
+          this.emit('recognition_error', { error: event.error });
+          if (event.error === 'no-speech' && this.config.autoLoop) {
+            this.restartListening();
+          }
+        };
+
+        this.recognition.onend = () => {
+          this.state.isListening = false;
+          this.log('Speech recognition ended');
+          this.emit('listening_stopped');
+          if (this.state.conversationActive && this.config.autoLoop && !this.state.isSpeaking) {
+            setTimeout(() => this.startListening(), 500);
+          }
+        };
+      }
+
+      initSpeechSynthesis() {
+        if (this.synthesis.onvoiceschanged !== undefined) {
+          this.synthesis.onvoiceschanged = () => {
+            this.selectVoice();
+          };
+        }
+        this.selectVoice();
+      }
+
+      handleSpeechResult(event) {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        let confidence = 0;
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+            confidence = event.results[i][0].confidence;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        if (this.state.userEditing) {
+          this.log('User editing - ignoring speech recognition updates');
+          return;
+        }
+
+        const combinedTranscript = finalTranscript + interimTranscript;
+        this.state.currentTranscription = combinedTranscript;
+
+        this.emit('transcription_update', {
+          text: combinedTranscript,
+          isFinal: finalTranscript.length > 0,
+          interim: interimTranscript,
+          confidence
+        });
+
+        if (combinedTranscript) {
+          this.resetSilenceTimer();
+        }
+      }
+
+      startConversation() {
+        this.state.conversationActive = true;
+        this.state.lastSentMessage = null;
+        this.state.chatHistory = [];
+        this.state.qualityFeedbackHistory = [];
+        this.state.currentS4Phase = 'S1';
+        this.state.currentScenario = this.getRandomScenario();
+        this.log('Conversation started with scenario:', JSON.stringify(this.state.currentScenario, null, 2));
+        this.emit('conversation_started', { scenario: this.state.currentScenario });
+        this.startListening();
+      }
+
+      stopConversation() {
+        this.state.conversationActive = false;
+        this.stopListening();
+        this.stopSpeaking();
+        this.clearSilenceTimer();
+        this.state.userEditing = false;
+        this.log('Conversation stopped');
+        this.emit('conversation_stopped');
+      }
+
+      startListening() {
+        if (!this.recognition) {
+          this.emit('error', { type: 'no_recognition', message: 'Speech recognition not available' });
+          return;
+        }
+        if (this.state.isListening || this.state.isSpeaking) return;
+
+        try {
+          this.state.currentTranscription = '';
+          this.recognition.start();
+          this.log('Started listening');
+        } catch (error) {
+          this.log(`Error starting recognition: ${error.message}`);
+          this.emit('error', { type: 'start_listening_failed', message: error.message });
+        }
+      }
+
+      stopListening() {
+        if (this.recognition && this.state.isListening) {
+          this.recognition.stop();
+          this.clearSilenceTimer();
+          this.log('Stopped listening');
+        }
+      }
+
+      restartListening() {
+        this.log('Restarting listening...');
+        setTimeout(() => {
+          if (this.state.conversationActive && !this.state.isSpeaking) {
+            this.startListening();
+          }
+        }, 1000);
+      }
+
+      resetSilenceTimer() {
+        if (this.state.userEditing) {
+          return;
+        }
+        this.clearSilenceTimer();
+        this.emit('silence_timer_reset');
+
+        this.silenceTimer = setTimeout(() => {
+          this.emit('silence_detected');
+          if (this.state.currentTranscription.trim() && this.state.currentTranscription.trim() !== this.state.lastSentMessage) {
+            this.processUserMessage(this.state.currentTranscription.trim());
+          }
+        }, this.config.silenceDelay);
+      }
+
+      clearSilenceTimer() {
+        if (this.silenceTimer) {
+          clearTimeout(this.silenceTimer);
+          this.silenceTimer = null;
+        }
+      }
+
+      async processUserMessage(message, confidence = 1.0) {
+        if (!message || message === this.state.lastSentMessage) {
+          this.log('Ignoring duplicate or empty message');
+          return;
+        }
+        this.state.lastSentMessage = message;
+        this.state.lastUserMessage = message;
+        this.state.currentTranscription = '';
+        this.state.isProcessing = true;
+        this.state.userEditing = false;
+
+        this.log(`Processing user message: "${message}"`);
+        this.emit('user_message', { message, confidence });
+
+        this.stopListening();
+
+        try {
+          this.state.chatHistory.push({ role: 'user', parts: [{ text: message }] });
+          await Promise.all([
+            this.generateQualityFeedback(message, confidence),
+            this.generateCustomerResponse(),
+            this.generateCallFlowSuggestion()
+          ]);
+          this.emit('processing_finished');
+        } catch (error) {
+          this.log(`Error processing message: ${error.message}`);
+          this.emit('error', { type: 'processing_failed', message: error.message });
+        } finally {
+          this.state.isProcessing = false;
+        }
+      }
+
+      async generateCustomerResponse() {
+        const conversationContext = this.state.chatHistory.slice(-6);
+        const prompt = `Customer Persona: "${this.customerPersona}". You are ${this.state.currentScenario.customerName} and their initial complaint is: "${this.state.currentScenario.initialCustomerComplaint}". Respond to the agent's last message concisely and naturally.`;
+
+        const response = await this.generateContent(
+          conversationContext,
+          prompt,
+          this.state.currentScenario.customerTemperature,
+          this.state.currentScenario.customerTopK,
+          this.state.currentScenario.customerTopP,
+          this.state.currentScenario.customerMaxOutputTokens,
+          []
+        );
+
+        if (response.startsWith('Error:')) {
+          this.emit('assistant_message', { message: response, sender: 'Customer AI' });
+          this.log('Error generating customer response');
+        } else {
+          this.state.chatHistory.push({ role: 'model', parts: [{ text: response }] });
+          this.emit('assistant_message', { message: response, sender: this.state.currentScenario.customerName });
+          await this.speak(response, this.state.currentScenario.customerGender);
+        }
+      }
+
+      async generateQualityFeedback(agentResponseText, confidence) {
+        const conversationContext = this.state.chatHistory.slice(-2);
+        const prompt = `QA Persona: "${this.qualityAssistantPersona}". Evaluate the agent's last response ("${agentResponseText}") based on the S4 guidelines and foundational behaviors. Provide a score out of 100 and a brief comment. Also, identify the current S4 phase (S1, S2, S3, or S4) the conversation is in based on the agent's last response and the overall flow. S4 Guidelines: ${this.S4_GUIDELINES_SUMMARY} Include speech confidence: ${confidence.toFixed(2)}. The response should be in JSON format: {"score": number, "comment": "string", "s4Phase": "S1|S2|S3|S4", "reasoning": "string", "suggestions": "string"}`;
+
+        try {
+          const feedbackJson = await this.generateContent(
+            conversationContext,
+            prompt,
+            0.7, 40, 0.8, 500, []
+          );
+          this.log("Quality Feedback JSON:", feedbackJson);
+
+          const cleanedFeedbackJson = feedbackJson.replace(/```json\n|\n```/g, '').trim();
+          const feedback = JSON.parse(cleanedFeedbackJson);
+          this.emit('quality_feedback', {
+            score: feedback.score,
+            comment: feedback.comment,
+            details: {
+              s4Phase: feedback.s4Phase,
+              confidence,
+              reasoning: feedback.reasoning,
+              suggestions: feedback.suggestions
             }
+          });
+          this.state.qualityFeedbackHistory.push({ score: feedback.score, comment: feedback.comment, details: { s4Phase: feedback.s4Phase, confidence } });
+          this.state.currentS4Phase = feedback.s4Phase;
+        } catch (e) {
+          this.log('Error parsing or generating quality feedback:', e);
+          this.emit('quality_feedback', {
+            score: 50,
+            comment: 'Could not generate detailed quality feedback.',
+            details: {}
+          });
+        }
+      }
+
+      async generateCallFlowSuggestion() {
+        const conversationContext = this.state.chatHistory.slice(-4);
+        const prompt = `Flow Manager Persona: "${this.flowManagerPersona}". You are a Call Flow Manager AI. Your role is to guide the agent through the S4 call flow. Based on the conversation history and the current S4 phase (${this.state.currentS4Phase}), provide a subtle suggestion or prompt to help the agent progress or conclude the call. Your tone should be helpful and encouraging, not critical. Suggest the next logical S4 phase or a concluding action (e.g., 'summarize the call'). If the current phase is S4 and all actions are likely complete, suggest concluding the call. Previous Quality Feedback: ${JSON.stringify(this.state.qualityFeedbackHistory)}`;
+
+        try {
+          const suggestion = await this.generateContent(
+            conversationContext,
+            prompt,
+            0.8, 40, 0.9, 100, []
+          );
+          if (!suggestion.startsWith('Error:')) {
+            this.emit('assistant_message', { message: suggestion, sender: 'Call Flow Manager' });
+          }
+        } catch (e) {
+          this.log('Error generating call flow suggestion:', e);
+        }
+      }
+
+      async generateContent(contextMessages, systemInstruction, temperature, topK, topP, maxOutputTokens, stopSequences) {
+        this.emit('processing_started');
+        const headers = { 'Content-Type': 'application/json' };
+        const contents = JSON.parse(JSON.stringify(contextMessages));
+
+        if (systemInstruction) {
+          if (contents.length > 0 && contents[0].role === 'user') {
+            contents[0].parts[0].text = systemInstruction + "\n\n" + contents[0].parts[0].text;
+          } else if (contents.length === 0) {
+            contents.push({ role: 'user', parts: [{ text: systemInstruction }] });
+          } else {
+            contents.unshift({ role: 'user', parts: [{ text: systemInstruction }] });
+          }
         }
 
-        setVolume(volume) {
-            this.volume = volume;
-            console.log('SpeechService volume set to:', this.volume);
+        const body = JSON.stringify({
+          contents,
+          generationConfig: { temperature, topK, topP, maxOutputTokens, stopSequences }
+        });
+
+        this.log("Request to Gemini:", body);
+
+        try {
+          const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyAuGsOgCCzlSBvpcelKWcZXBf1FXFx-zMg`, {
+            method: 'POST',
+            headers,
+            body
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+          }
+
+          const data = await response.json();
+          this.log("Response from Gemini:", data);
+          return data.candidates && data.candidates.length > 0 ? data.candidates[0].content.parts[0].text : "No response from AI.";
+        } catch (error) {
+          this.log('Error generating content:', error);
+          this.emit('error', { type: 'api_error', message: error.message });
+          return "Error: Could not get a response from AI.";
         }
+      }
 
-        getPreferredVoice(gender = null) {
-            const voices = this.voices.filter(voice => voice.lang.includes('en-US'));
-            let preferredVoice = null;
+      speak(text, gender = this.config.voiceGender) {
+        return new Promise((resolve, reject) => {
+          if (this.state.isListening) {
+            this.stopListening();
+          }
+          if (this.synthesis.speaking) {
+            this.synthesis.cancel();
+          }
 
-            if (gender === 'male') {
-                preferredVoice = voices.find(voice => voice.name.includes('Male') || voice.name.includes('David'));
-            } else if (gender === 'female') {
-                preferredVoice = voices.find(voice => voice.name.includes('Zira') || voice.name.includes('Samantha') || voice.name.includes('Female'));
+          this.currentUtterance = new SpeechSynthesisUtterance(text);
+          this.currentUtterance.voice = this.selectedVoice;
+          this.currentUtterance.rate = this.config.speechRate;
+          this.currentUtterance.pitch = this.config.speechPitch;
+          this.currentUtterance.volume = this.config.speechVolume;
+
+          this.currentUtterance.onstart = () => {
+            this.state.isSpeaking = true;
+            this.log(`Started speaking: "${text}"`);
+            this.emit('speaking_started', { text });
+          };
+
+          this.currentUtterance.onend = () => {
+            this.state.isSpeaking = false;
+            this.log('Finished speaking');
+            this.emit('speaking_finished', { text });
+            if (this.state.conversationActive) {
+              setTimeout(() => this.startListening(), 500);
             }
-            
-            return preferredVoice || voices[0] || null; // Fallback to first English voice, then null
+            resolve();
+          };
+
+          this.currentUtterance.onerror = (event) => {
+            this.state.isSpeaking = false;
+            this.log(`Speech synthesis error: ${event.error}`);
+            this.emit('speaking_error', { error: event.error });
+            reject(new Error(event.error));
+          };
+
+          this.synthesis.speak(this.currentUtterance);
+        });
+      }
+
+      stopSpeaking() {
+        if (this.synthesis.speaking) {
+          this.synthesis.cancel();
+          this.state.isSpeaking = false;
+          this.log('Stopped speaking');
+          this.emit('speaking_stopped');
         }
+      }
 
-        async speak(text, gender = null) {
-            return new Promise((resolve, reject) => {
-                if (!this.synthesis || !text) {
-                    console.log('Speech synthesis skipped: not available or no text provided.');
-                    return resolve();
-                }
-
-                this.synthesis.cancel(); // Cancel any ongoing speech
-
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'en-US';
-                utterance.volume = this.volume;
-                
-                const voice = this.getPreferredVoice(gender);
-                if (voice) {
-                    utterance.voice = voice;
-                    console.log('Using voice:', voice.name, 'for gender:', gender);
-                } else {
-                    console.warn('No suitable voice found for gender:', gender, '. Using default if available.');
-                    if (this.voices.length > 0) {
-                        utterance.voice = this.voices.find(v => v.lang.includes('en-US')) || this.voices[0];
-                    } else {
-                        console.error('No speech synthesis voices available. Ensure voices are installed on your OS.');
-                        return resolve(); // Resolve if no voices at all
-                    }
-                }
-
-                utterance.pitch = 1.0;
-                utterance.rate = 0.9;
-
-                this.isSpeaking = true;
-
-                utterance.onend = () => {
-                    console.log('Speech ended');
-                    this.isSpeaking = false;
-                    // Automatically reactivate microphone if not muted
-                    if (!isMuted) {
-                        startRecognition();
-                    }
-                    resolve();
-                };
-
-                utterance.onerror = (err) => {
-                    console.error('Speech error:', err);
-                    this.isSpeaking = false;
-                    // Automatically reactivate microphone if not muted
-                    if (!isMuted) {
-                        startRecognition();
-                    }
-                    reject(err);
-                };
-
-                // Small delay to ensure synthesis is ready
-                setTimeout(() => {
-                    try {
-                        this.synthesis.speak(utterance);
-                        console.log('Speech synthesis started for:', text);
-                        // Mute microphone while AI is speaking
-                        stopRecognition(); 
-                    } catch (e) {
-                        console.error('Error calling speechSynthesis.speak():', e);
-                        this.isSpeaking = false;
-                        reject(e);
-                    }
-                }, 100);
-            });
+      selectVoice() {
+        const voices = this.synthesis.getVoices();
+        let preferredVoice = voices.find(voice => {
+          const name = voice.name.toLowerCase();
+          if (this.config.voiceGender === 'female') {
+            return name.includes('female') || name.includes('woman') || name.includes('zira') || name.includes('samantha');
+          } else {
+            return name.includes('male') || name.includes('man') || name.includes('david');
+          }
+        });
+        if (!preferredVoice && voices.length > 0) {
+          preferredVoice = voices.find(v => v.lang.includes('en-US')) || voices[0];
         }
+        this.selectedVoice = preferredVoice || null;
+        this.log(`Selected voice: ${this.selectedVoice ? this.selectedVoice.name : 'none'}`);
+      }
 
-        stop() {
-            if (this.synthesis) {
-                this.synthesis.cancel();
-                this.isSpeaking = false;
-                console.log('Speech synthesis stopped.');
-            }
+      getRandomScenario() {
+        if (!this.scenarios || !Array.isArray(this.scenarios) || this.scenarios.length === 0) {
+          this.log("Scenarios data is not available or is empty. Using default scenario.");
+          return {
+            customerName: "Default Customer",
+            initialCustomerComplaint: "I have an issue with my service.",
+            customerGender: "male",
+            customerTemperature: 0.7,
+            customerTopK: 40,
+            customerTopP: 0.8,
+            customerMaxOutputTokens: 100
+          };
         }
+        return this.scenarios[Math.floor(Math.random() * this.scenarios.length)];
+      }
+
+      delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+
+      log(msg, ...args) {
+        if (this.config.debug) {
+          console.log(`[VoiceController] ${msg}`, ...args);
+        }
+      }
+
+      emit(eventName, detail) {
+        this.dispatchEvent(new CustomEvent(eventName, { detail }));
+      }
     }
 
-    const speechService = new SpeechService(); // Instantiate the SpeechService
+    // === UI Logic ===
+    const vc = new VoiceController({ debug: true, silenceDelay: 2000 });
 
-    // Use the provided API key directly
-    const API_KEY = "AIzaSyAuGsOgCCzlSBvpcelKWcZXBf1FXFx-zMg"; // Changed to empty string as per user request
-    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
-    
-    const micBtn = document.getElementById('mic-btn');
-    const sendBtn = document.getElementById('send-btn');
-    const cancelBtn = document.getElementById('cancel-btn');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const sendBtn = document.getElementById('sendBtn');
     const chat = document.getElementById('chat');
-    const status = document.getElementById('status');
-    const loader = document.getElementById('loader');
-    const muteBtn = document.getElementById('mute-btn');
+    const transcriptDisplay = document.getElementById('transcriptDisplay');
+    const statusText = document.getElementById('statusText');
+    const statusIndicator = document.getElementById('statusIndicator');
+    const silenceTimerElem = document.getElementById('silenceTimer');
+    const silenceDelaySelect = document.getElementById('silenceDelay');
     const qualityFeedbackPanel = document.getElementById('quality-feedback-panel');
-    const saveCallBtn = document.getElementById('save-call-btn'); // New save button
-
-    // S4 Progress elements
     const s1Phase = document.getElementById('s1-phase');
     const s2Phase = document.getElementById('s2-phase');
     const s3Phase = document.getElementById('s3-phase');
     const s4Phase = document.getElementById('s4-phase');
-    const s4Phases = {
-        'S1': s1Phase,
-        'S2': s2Phase,
-        'S3': s3Phase,
-        'S4': s4Phase
-    };
-
-    // Modal elements
+    const s4Phases = { 'S1': s1Phase, 'S2': s2Phase, 'S3': s3Phase, 'S4': s4Phase };
     const genericModal = document.getElementById('genericModal');
     const modalTitle = document.getElementById('modalTitle');
     const modalBody = document.getElementById('modalBody');
     const closeModalBtn = document.getElementById('closeModalBtn');
-    const modalSaveBtn = document.getElementById('modalSaveBtn'); // Corrected assignment
+    const modalSaveBtn = document.getElementById('modalSaveBtn');
     const modalCancelBtn = document.getElementById('modalCancelBtn');
-
-    let recognition;
-    let isRecognizing = false;
-    let currentTranscript = '';
-    let silenceTimer = null;
-    let isMuted = false;
-    let autoSendDelay = 60000; // Default auto-send delay in milliseconds (60 seconds)
-    let lastSpeechEndTime = 0; // To track dead air
-
-    // Chat history for context
-    let chatHistory = []; // This will store alternating user (agent) and model (customer AI) turns
-    let qualityFeedbackHistory = []; // Stores structured quality feedback
-
-    // Initial customer scenario setup - now dynamically set
-    let currentScenario = null; // Stores the full scenario object
-    let currentInitialCustomerScenarioText = ""; // Stores just the initial complaint text
-    let currentS4Phase = 'S1'; // Track current S4 phase
-
-    let customerPersona = "You are a Comcast customer with a billing inquiry. You are slightly frustrated but polite. Respond concisely. Ensure your responses have variance and do not sound robotic.";
-    let qualityAssistantPersona = "You are an S4 Quality Assurance Specialist. Evaluate the agent's last response based on the S4 guidelines provided. Provide a score out of 100 and a brief comment. Focus on Start, Solve, Sell, Summarize, and Foundational Behaviors. Also, identify the current S4 phase (S1, S2, S3, or S4) the conversation is in based on the agent's last response and the overall flow.";
-    let flowManagerPersona = "You are a Call Flow Manager AI. Your role is to guide the agent through the S4 call flow. Based on the conversation history and the current S4 phase, provide a subtle suggestion or prompt to help the agent progress or conclude the call. Your tone should be helpful and encouraging, not critical. Suggest the next logical S4 phase or a concluding action (e.g., 'summarize the call').";
-
-
-    const S4_GUIDELINES_SUMMARY = `
-        S4 Universal Call Flow:
-        - S1: Start (Greeting, Reflect Reason, Relate/Empathize, Take Ownership, Authenticate/Set Agenda)
-        - S2: Solve (Obtain Info/Probe, Resolve Issue, Build Value/Promote)
-        - S3: Sell (Transition to Offer, Present Offer, Overcome Objections, Proactively Close Sale)
-        - S4: Summarize (Summarize Actions, Close Contact, Documentation)
-        Foundational Behaviors: Tone, Confidence, Clarity; Active Listening; Contact Management; Acknowledge/Take Responsibility; Build Rapport/Demonstrate Concern.
-        Scoring: Highly Effective (HE) gives more points than Meets Expectations (ME). Below Expectations (BE) gives 0 points.
-        Critical Failures: Auto-Fail (e.g., Rudeness, Inappropriate Transfer) results in 0 overall. Section Failure (e.g., Authentication failure) results in 0 for that section.
-    `;
 
     function addMessage(text, sender, senderName = '') {
       const messages = chat.querySelector('.messages');
       const div = document.createElement('div');
       div.className = `message ${sender}`;
       if (senderName) {
-          const nameSpan = document.createElement('span');
-          nameSpan.className = 'sender-name';
-          nameSpan.textContent = senderName;
-          div.appendChild(nameSpan);
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'sender-name';
+        nameSpan.textContent = senderName;
+        div.appendChild(nameSpan);
       }
       const textNode = document.createTextNode(text);
       div.appendChild(textNode);
       messages.appendChild(div);
-      chat.scrollTop = messages.scrollHeight; // Use messages.scrollHeight for more reliable scroll
+      chat.scrollTop = chat.scrollHeight;
     }
 
     function addQualityFeedback(score, comment, details = {}) {
@@ -943,727 +1242,327 @@
         div.classList.add('bad');
       }
       div.innerHTML = `<strong>Score: ${score}/100</strong><br>${comment}`;
-      
       const infoBtn = document.createElement('button');
       infoBtn.className = 'quality-info-btn';
       infoBtn.innerHTML = '💡';
       infoBtn.title = 'Click for more details';
       infoBtn.onclick = () => showQualityDetails(details);
       div.appendChild(infoBtn);
-
       qualityFeedbackPanel.appendChild(div);
       qualityFeedbackPanel.scrollTop = qualityFeedbackPanel.scrollHeight;
-      qualityFeedbackHistory.push({ score, comment, details }); // Store structured feedback with details
     }
 
     function showQualityDetails(details) {
-        let detailHtml = `<h4>Feedback Details:</h4>`;
-        if (details.s4Phase) {
-            detailHtml += `<p><strong>S4 Phase:</strong> ${details.s4Phase}</p>`;
-        }
-        if (details.confidence !== undefined) {
-            detailHtml += `<p><strong>Speech Confidence:</strong> ${(details.confidence * 100).toFixed(1)}%</p>`;
-        }
-        if (details.deadAirDuration !== undefined) {
-            detailHtml += `<p><strong>Dead Air Duration:</strong> ${details.deadAirDuration.toFixed(1)} seconds</p>`;
-        }
-        if (details.reasoning) {
-            detailHtml += `<p><strong>AI Reasoning:</strong> ${details.reasoning}</p>`;
-        }
-        if (details.suggestions) {
-            detailHtml += `<p><strong>Suggestions:</strong> ${details.suggestions}</p>`;
-        }
-        // Add more details as needed
-        showModal('Quality Feedback Details', detailHtml, null, true); // Pass true to hide save/cancel buttons
-    }
-
-    function updateStatus(message, showLoader = false) {
-      status.textContent = message;
-      loader.style.display = showLoader ? 'inline-block' : 'none';
-      micBtn.disabled = showLoader;
-      sendBtn.disabled = showLoader;
-      cancelBtn.disabled = showLoader;
-      // Mute button should always be active for manual toggle
-      // muteBtn.disabled = showLoader; // Keep mute button active
-    }
-
-    function initRecognition() {
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) {
-        addMessage('Speech recognition not supported in this browser. Please use Chrome for best experience.', 'ai');
-        micBtn.disabled = true;
-        return null;
+      let detailHtml = `<h4>Feedback Details:</h4>`;
+      if (details.s4Phase) {
+        detailHtml += `<p><strong>S4 Phase:</strong> ${details.s4Phase}</p>`;
       }
+      if (details.confidence !== undefined) {
+        detailHtml += `<p><strong>Speech Confidence:</strong> ${(details.confidence * 100).toFixed(1)}%</p>`;
+      }
+      if (details.reasoning) {
+        detailHtml += `<p><strong>AI Reasoning:</strong> ${details.reasoning}</p>`;
+      }
+      if (details.suggestions) {
+        detailHtml += `<p><strong>Suggestions:</strong> ${details.suggestions}</p>`;
+      }
+      showModal('Quality Feedback Details', detailHtml, null, true);
+    }
 
-      const rec = new SR();
-      rec.lang = 'en-US';
-      rec.continuous = false;
-      rec.interimResults = true;
+    function updateS4Progress(phase) {
+      Object.values(s4Phases).forEach(el => {
+        el.classList.remove('active', 'completed');
+      });
 
-      rec.onstart = () => {
-        isRecognizing = true;
-        micBtn.classList.add('recording');
-        sendBtn.disabled = true;
-        cancelBtn.disabled = false;
-        updateStatus('Listening...');
-        currentTranscript = '';
-        clearTimeout(silenceTimer);
-        lastSpeechEndTime = performance.now(); // Reset dead air timer
-      };
+      let foundActive = false;
+      for (const s4Key in s4Phases) {
+        if (s4Key === phase) {
+          s4Phases[s4Key].classList.add('active');
+          foundActive = true;
+          vc.state.currentS4Phase = s4Key;
+        } else if (!foundActive) {
+          s4Phases[s4Key].classList.add('completed');
+        }
+      }
+    }
 
-      let lastTranscript = '';
-      rec.onresult = (e) => {
-        clearTimeout(silenceTimer); // Reset silence timer on any speech
-        
-        let interimTranscript = '';
-        let finalTranscript = '';
-        let confidence = 0;
-        
-        for (let i = 0; i < e.results.length; i++) {
-          const transcript = e.results[i][0].transcript;
-          if (e.results[i].isFinal) {
-            finalTranscript = transcript;
-            confidence = e.results[i][0].confidence;
+    function resetS4Progress() {
+      Object.values(s4Phases).forEach(el => {
+        el.classList.remove('active', 'completed');
+      });
+      s4Phases['S1'].classList.add('active');
+      vc.state.currentS4Phase = 'S1';
+    }
+
+    const settingsSchema = [
+      { id: 'customerTemperature', label: 'Customer AI Temperature (0.0-1.0)', type: 'number', min: 0.0, max: 1.0, step: 0.1, key: 'customerTemperature' },
+      { id: 'customerTopK', label: 'Customer AI Top K', type: 'number', min: 1, max: 100, step: 1, key: 'customerTopK' },
+      { id: 'customerTopP', label: 'Customer AI Top P (0.0-1.0)', type: 'number', min: 0.0, max: 1.0, step: 0.1, key: 'customerTopP' },
+      { id: 'customerMaxOutputTokens', label: 'Customer AI Max Output Tokens', type: 'number', min: 1, max: 2048, step: 1, key: 'customerMaxOutputTokens' },
+      { id: 'speechVolume', label: 'Speech Volume (0.0-1.0)', type: 'number', min: 0.0, max: 1.0, step: 0.1, key: 'speechVolume' },
+      { id: 'voiceGender', label: 'Voice Gender', type: 'select', options: [{value: 'female', label: 'Female'}, {value: 'male', label: 'Male'}], key: 'voiceGender' }
+    ];
+
+    const personaSchema = [
+      { id: 'customerPersona', label: 'Customer AI Persona', type: 'textarea', key: 'customerPersona' },
+      { id: 'qualityAssistantPersona', label: 'Quality Assistant Persona', type: 'textarea', key: 'qualityAssistantPersona' },
+      { id: 'flowManagerPersona', label: 'Call Flow Manager Persona', type: 'textarea', key: 'flowManagerPersona' }
+    ];
+
+    function showModal(title, schema, currentValues, hideActions = false) {
+      modalTitle.textContent = title;
+      modalBody.innerHTML = '';
+
+      if (typeof schema === 'string') {
+        modalBody.innerHTML = schema;
+      } else {
+        schema.forEach(field => {
+          const label = document.createElement('label');
+          label.textContent = field.label;
+          let input;
+
+          if (field.type === 'textarea') {
+            input = document.createElement('textarea');
+            input.rows = 4;
+            input.value = currentValues ? currentValues[field.key] : '';
+          } else if (field.type === 'select') {
+            input = document.createElement('select');
+            field.options.forEach(opt => {
+              const option = document.createElement('option');
+              option.value = opt.value;
+              option.textContent = opt.label;
+              if (currentValues && currentValues[field.key] === opt.value) {
+                option.selected = true;
+              }
+              input.appendChild(option);
+            });
           } else {
-            interimTranscript = transcript;
+            input = document.createElement('input');
+            input.type = field.type;
+            if (field.type === 'number') {
+              input.min = field.min;
+              input.max = field.max;
+              input.step = field.step;
+              input.value = currentValues ? currentValues[field.key] : '';
+            } else {
+              input.value = currentValues ? currentValues[field.key] : '';
+            }
           }
-        }
-
-        const fullTranscript = (finalTranscript || interimTranscript).trim();
-        
-        if (fullTranscript !== lastTranscript) {
-          const newWords = fullTranscript.slice(lastTranscript.length).trim();
-          
-          const command = newWords.toLowerCase();
-          if (command === 'send' || command.endsWith(' send')) {
-            if (currentTranscript.trim()) {
-              sendMessage(currentTranscript.trim(), confidence); // Pass confidence
-            }
-            return;
-          } else if (command === 'delete' || command.endsWith(' delete')) {
-            currentTranscript = '';
-            const messages = chat.querySelector('.messages').lastElementChild;
-            if (messages && messages.classList.contains('user') && !messages.classList.contains('sent')) {
-              messages.remove();
-            }
-            return;
-          }
-
-          currentTranscript = fullTranscript;
-          lastTranscript = fullTranscript;
-          lastSpeechEndTime = performance.now(); // Update last speech time
-
-          sendBtn.disabled = !currentTranscript;
-
-          let messageElement = chat.querySelector('.messages').lastElementChild;
-          if (messageElement && messageElement.classList.contains('user') && !messageElement.classList.contains('sent')) {
-            messageElement.textContent = currentTranscript;
-          } else {
-            messageElement = document.createElement('div');
-            messageElement.className = 'message user';
-            messageElement.innerHTML = `<span class="sender-name">Agent:</span>${currentTranscript}`; // Add sender name
-            chat.querySelector('.messages').appendChild(messageElement);
-          }
-          chat.scrollTop = chat.scrollHeight;
-        }
-
-        // Start new silence timer only if currently recognizing and there's a transcript
-        if (isRecognizing && currentTranscript.trim()) {
-            silenceTimer = setTimeout(() => {
-                console.log('Silence detected - auto-sending message');
-                const deadAirDuration = (performance.now() - lastSpeechEndTime) / 1000;
-                sendMessage(currentTranscript.trim(), confidence, deadAirDuration); // Pass confidence and dead air
-            }, autoSendDelay); // Use autoSendDelay
-        }
-      };
-
-      rec.onerror = (e) => {
-        console.error('Speech recognition error:', e.error);
-        if (e.error === 'network') {
-          updateStatus('Network error. Retrying...', true);
-          setTimeout(() => {
-            if (isRecognizing) startRecognition();
-          }, 1000);
-        } else if (e.error === 'not-allowed') {
-            updateStatus('Microphone access denied. Please enable microphone permissions in your browser settings. Then, refresh the page.', false);
-            micBtn.disabled = true; // Disable mic button if permission is denied
-        }
-        else {
-          updateStatus(`Error: ${e.error}`);
-          stopRecognition();
-        }
-      };
-
-      rec.onend = () => {
-        isRecognizing = false;
-        micBtn.classList.remove('recording');
-        cancelBtn.disabled = true;
-        // Only update status if not already showing a permission error
-        if (status.textContent !== 'Microphone access denied. Please enable microphone permissions in your browser settings. Then, refresh the page.') {
-            updateStatus('Click mic to start');
-        }
-        clearTimeout(silenceTimer); // Ensure timer is cleared on end
-        recognition = null; // Reset recognition object to force re-initialization on next start
-      };
-
-      return rec;
-    }
-
-    function startRecognition() {
-      if (isMuted || speechService.isSpeaking) { // Don't start if muted or AI is speaking
-        console.log('Recognition blocked: muted or AI is speaking.');
-        return;
-      }
-      if (!recognition) {
-        recognition = initRecognition();
-        if (!recognition) return; // If initRecognition failed, stop here
-      }
-
-      try {
-        recognition.start();
-        console.log('Recognition started.');
-      } catch (e) {
-        console.error('Failed to start recognition:', e);
-        updateStatus('Failed to access microphone. Please check permissions.');
-      }
-    }
-
-    function stopRecognition() {
-      if (recognition && isRecognizing) {
-        recognition.stop();
-        console.log('Recognition stopped.');
-        clearTimeout(silenceTimer);
-      }
-    }
-
-    function toggleMute() {
-      isMuted = !isMuted;
-      muteBtn.classList.toggle('muted');
-      muteBtn.querySelector('.button-icon').textContent = isMuted ? '🔇' : '🔊';
-      muteBtn.querySelector('.button-text').textContent = isMuted ? 'Unmute' : 'Mute';
-      
-      if (isMuted) {
-        stopRecognition(); // Stop recognition immediately if muted
-        speechService.stop(); // Stop any ongoing speech
-        console.log('Microphone manually muted.');
-      } else {
-        // If unmuted and AI is not speaking, restart recognition
-        if (!speechService.isSpeaking) {
-          startRecognition();
-          console.log('Microphone manually unmuted.');
-        }
-      }
-    }
-
-    async function sendMessage(text, confidence = 0, deadAirDuration = 0) {
-      if (!text.trim()) return;
-      
-      clearTimeout(silenceTimer);
-      stopRecognition(); // Ensure recognition is stopped before sending
-
-      // Mark the last user message as sent
-      const messages = chat.querySelector('.messages').lastElementChild;
-      if (messages && messages.classList.contains('user') && !messages.classList.contains('sent')) {
-        messages.classList.add('sent');
-      } else {
-        // If message was auto-sent without interim display, add it now
-        addMessage(text, 'user', 'Agent:'); // Add sender name
-        chat.querySelector('.messages').lastElementChild.classList.add('sent');
-      }
-
-      const wasMuted = isMuted;
-      isMuted = true; // Temporarily mute during AI processing
-      muteBtn.classList.add('muted');
-      muteBtn.querySelector('.button-icon').textContent = '🔇';
-      
-      updateStatus('Processing...', true);
-
-      try {
-        // --- Role-Play AI (Customer Response) ---
-        // Construct customer payload with persona and initial complaint as system/user context
-        const customerPrompt = `As the customer, respond to the agent's last message.
-        Customer Persona: ${customerPersona}
-        Initial Complaint: "${currentInitialCustomerScenarioText}"
-        Conversation History: ${JSON.stringify(chatHistory.slice(-6))}
-        Agent's Last Message: "${text}"
-        Your response:`;
-
-        const customerPayload = { contents: [{ role: "user", parts: [{ text: customerPrompt }] }] };
-        console.log("Customer AI Request Payload:", JSON.stringify(customerPayload, null, 2));
-
-        const customerRes = await fetch(GEMINI_API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(customerPayload)
+          input.id = field.id;
+          label.appendChild(input);
+          modalBody.appendChild(label);
         });
-        const customerData = await customerRes.json();
-        console.log("Customer AI Raw Response:", JSON.stringify(customerData, null, 2)); // Log raw response
-
-        let customerReply = '(No customer response)';
-        if (customerData.candidates && customerData.candidates.length > 0 &&
-            customerData.candidates[0].content && customerData.candidates[0].content.parts &&
-            customerData.candidates[0].content.parts.length > 0) {
-            customerReply = customerData.candidates[0].content.parts[0].text;
-        } else {
-            console.error("Customer AI did not return a valid response structure or content:", customerData);
-            customerReply = '(Customer AI did not generate a valid response)';
-        }
-        
-        addMessage(customerReply, 'ai', `${currentScenario.customerName}:`); // Add customer name
-        chatHistory.push({ role: "user", parts: [{ text: text }] }); // Add agent's message to history
-        chatHistory.push({ role: "model", parts: [{ text: customerReply }] }); // Add customer's response to history
-
-        if (!wasMuted) { // Speak only if not originally muted
-          await speechService.speak(customerReply, currentScenario.customerGender); // Use speechService instance with gender
-        }
-
-        // --- Quality AI Analysis ---
-        let precedingCustomerMessageText = '';
-        // Find the most recent 'model' message before the current agent's message in chatHistory
-        for (let i = chatHistory.length - 1; i >= 0; i--) {
-            if (chatHistory[i].role === 'model') {
-                precedingCustomerMessageText = chatHistory[i].parts[0].text;
-                break;
-            }
-        }
-        
-        const qualityPrompt = `As an S4 Quality Assurance Specialist, evaluate the agent's response based on the S4 guidelines. Provide a score out of 100, a brief comment, the current S4 phase (S1, S2, S3, or S4) the conversation is in, your reasoning for the score, and suggestions for improvement or better wordings.
-        S4 Guidelines Summary: ${S4_GUIDELINES_SUMMARY}
-        
-        Here is the conversation turn to evaluate:
-        Customer: "${precedingCustomerMessageText || currentInitialCustomerScenarioText}"
-        Agent: "${text}"
-        
-        Focus specifically on whether the agent's response was appropriate given the customer's statement *immediately preceding* the agent's response (or the initial scenario if this is the first agent response).
-        For the 'Start' phase (S1), ensure the agent reflects the reason for contact and shows empathy *if the reason was provided by the customer*. If no specific reason was explicitly provided yet by the customer, evaluate the general greeting and rapport building.
-        Consider the overall flow and adherence to S4 principles.
-        Also consider the agent's speech characteristics:
-        - Speech Confidence: ${(confidence * 100).toFixed(1)}% (Higher is better)
-        - Dead Air Duration: ${deadAirDuration.toFixed(1)} seconds (Lower is better, typically aim for < 1 second within a turn, but longer pauses between turns are natural)
-        
-        Provide your response in JSON format with the following keys: "score" (integer), "comment" (string), "s4Phase" (string, e.g., "S1", "S2", "S3", "S4" - YOU MUST PROVIDE ONE OF THESE), "reasoning" (string), "suggestions" (string).`;
-            
-        const qualityResponseSchema = {
-            type: "OBJECT",
-            properties: {
-                "score": { "type": "INTEGER" },
-                "comment": { "type": "STRING" },
-                "s4Phase": { "type": "STRING", "enum": ["S1", "S2", "S3", "S4"] },
-                "reasoning": { "type": "STRING" },
-                "suggestions": { "type": "STRING" }
-            },
-            "propertyOrdering": ["score", "comment", "s4Phase", "reasoning", "suggestions"]
-        };
-
-        const qualityPayload = { 
-            contents: [{ role: "user", parts: [{ text: qualityPrompt }] }],
-            generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: qualityResponseSchema
-            }
-        };
-        console.log("Quality AI Request Payload:", JSON.stringify(qualityPayload, null, 2));
-
-        const qualityRes = await fetch(GEMINI_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(qualityPayload)
-        });
-        const qualityData = await qualityRes.json();
-        console.log("Quality AI Raw Response:", JSON.stringify(qualityData, null, 2)); // Log raw response
-        let qualityFeedback = { score: 0, comment: 'Error: Could not get quality feedback.', s4Phase: 'S1', reasoning: 'No reasoning provided.', suggestions: 'No suggestions provided.' }; // Default to S1
-        let qualityDetails = { confidence, deadAirDuration };
-
-        if (qualityData.candidates && qualityData.candidates.length > 0 &&
-            qualityData.candidates[0].content && qualityData.candidates[0].content.parts &&
-            qualityData.candidates[0].content.parts.length > 0) {
-            try {
-                const jsonText = qualityData.candidates[0].content.parts[0].text;
-                const parsedFeedback = JSON.parse(jsonText);
-                qualityFeedback = { ...qualityFeedback, ...parsedFeedback }; // Merge parsed data
-                qualityDetails = { ...qualityDetails, ...parsedFeedback }; // Add AI's reasoning/suggestions to details
-            } catch (parseError) {
-                console.error('Error parsing quality AI JSON:', parseError);
-                qualityFeedback.comment = `Error parsing quality feedback: ${parseError.message}`;
-                qualityDetails.reasoning = `Error parsing quality feedback: ${parseError.message}`;
-            }
-        } else {
-            console.error('Quality AI returned an unexpected structure:', qualityData);
-            qualityFeedback.comment = 'Error: Unexpected quality AI response structure.';
-            qualityDetails.reasoning = 'Unexpected quality AI response structure.';
-        }
-        
-        addQualityFeedback(qualityFeedback.score, qualityFeedback.comment, qualityDetails);
-        currentS4Phase = qualityFeedback.s4Phase; // Update current S4 phase based on quality AI
-        console.log("Quality AI returned S4 Phase:", currentS4Phase); // Log the phase returned by quality AI
-        updateS4Progress(currentS4Phase);
-
-        // --- Flow Management AI ---
-        const flowManagerPrompt = `As a Call Flow Manager AI, your role is to guide the agent through the S4 call flow.
-        Current S4 Phase: ${currentS4Phase}.
-        Conversation History: ${JSON.stringify(chatHistory.slice(-4))} (last 4 turns for context)
-        Agent's Last Response: "${text}"
-        Customer's Last Response: "${customerReply}"
-
-        Based on the current S4 phase and the recent conversation, provide a subtle suggestion or prompt to help the agent progress or conclude the call. Your tone should be helpful and encouraging, not critical.
-        
-        If the current phase is S1, suggest moving towards problem-solving.
-        If the current phase is S2, suggest looking for sales opportunities or resolving the issue fully.
-        If the current phase is S3, suggest closing the sale or moving to summarization if the sale is not viable.
-        If the current phase is S4, suggest concluding the call.
-        If the conversation seems stuck or repetitive, suggest a way to move forward.
-
-        Provide your response in JSON format with the following keys: "suggestion" (string), "nextS4Phase" (string, e.g., "S1", "S2", "S3", "S4", "Completed"), "interventionNeeded" (boolean, true if a strong prompt is needed).`;
-
-        const flowManagerResponseSchema = {
-            type: "OBJECT",
-            properties: {
-                "suggestion": { "type": "STRING" },
-                "nextS4Phase": { "type": "STRING", "enum": ["S1", "S2", "S3", "S4", "Completed"] },
-                "interventionNeeded": { "type": "BOOLEAN" }
-            },
-            "propertyOrdering": ["suggestion", "nextS4Phase", "interventionNeeded"]
-        };
-
-        const flowManagerPayload = {
-            contents: [{ role: "user", parts: [{ text: flowManagerPrompt }] }],
-            generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: flowManagerResponseSchema
-            }
-        };
-        console.log("Flow Manager AI Request Payload:", JSON.stringify(flowManagerPayload, null, 2));
-
-        const flowManagerRes = await fetch(GEMINI_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(flowManagerPayload)
-        });
-        const flowManagerData = await flowManagerRes.json();
-        console.log("Flow Manager AI Raw Response:", JSON.stringify(flowManagerData, null, 2)); // Log raw response
-        let flowManagerFeedback = { suggestion: '', nextS4Phase: currentS4Phase, interventionNeeded: false };
-
-        if (flowManagerData.candidates && flowManagerData.candidates.length > 0 &&
-            flowManagerData.candidates[0].content && flowManagerData.candidates[0].content.parts &&
-            flowManagerData.candidates[0].content.parts.length > 0) {
-            try {
-                const jsonText = flowManagerData.candidates[0].content.parts[0].text;
-                flowManagerFeedback = JSON.parse(jsonText);
-            } catch (parseError) {
-                console.error('Error parsing flow manager AI JSON:', parseError);
-            }
-        }
-
-        if (flowManagerFeedback.suggestion) {
-            addMessage(flowManagerFeedback.suggestion, 'ai', 'Flow Manager:');
-        }
-        if (flowManagerFeedback.nextS4Phase && flowManagerFeedback.nextS4Phase !== currentS4Phase) {
-            // Optionally update S4 progress based on Flow Manager's suggestion if it's a clear progression
-            // For now, we'll let Quality AI drive the main S4 progress, but this could be an override.
-        }
-
-
-      } catch (e) {
-        console.error('API Error:', e);
-        addMessage('Sorry, I encountered an error processing your message.', 'ai', `${currentScenario.customerName}:`);
-        addQualityFeedback(0, `API Error: ${e.message}`, { confidence, deadAirDuration, reasoning: `API Error: ${e.message}`, suggestions: 'Check network connection or API key.' });
-      } finally {
-        updateStatus('Click mic to start', false);
-        currentTranscript = '';
-        // Restore previous mute state and restart recognition if not muted and AI is not speaking
-        if (!wasMuted && !speechService.isSpeaking) {
-          isMuted = false;
-          muteBtn.classList.remove('muted');
-          muteBtn.querySelector('.button-icon').textContent = '🔊';
-          startRecognition();
-        }
       }
-    }
 
-    micBtn.addEventListener('click', () => {
-      if (isRecognizing) {
-        stopRecognition();
-      } else {
-        startRecognition();
-      }
-    });
-
-    sendBtn.addEventListener('click', () => {
-      if (currentTranscript.trim()) {
-        const confidence = recognition && recognition.currentResult ? recognition.currentResult[0].confidence : 0;
-        const deadAirDuration = (performance.now() - lastSpeechEndTime) / 1000;
-        sendMessage(currentTranscript.trim(), confidence, deadAirDuration);
-      }
-    });
-
-    cancelBtn.addEventListener('click', () => {
-      currentTranscript = '';
-      const messages = chat.querySelector('.messages').lastElementChild;
-      if (messages && messages.classList.contains('user') && !messages.classList.contains('sent')) {
-        messages.remove();
-      }
-      stopRecognition();
-      updateStatus('Click mic to start', false);
-      sendBtn.disabled = true;
-    });
-
-    muteBtn.addEventListener('click', toggleMute);
-
-    // --- Modal Functions ---
-    function showModal(title, bodyHtml, onSaveCallback, hideActionButtons = false) {
-        modalTitle.textContent = title;
-        modalBody.innerHTML = bodyHtml;
-        genericModal.classList.add('show');
-
-        modalSaveBtn.style.display = hideActionButtons ? 'none' : 'inline-block';
-        modalCancelBtn.style.display = hideActionButtons ? 'none' : 'inline-block';
-
-        modalSaveBtn.onclick = null; 
-        if (onSaveCallback) {
-            modalSaveBtn.onclick = onSaveCallback;
-        }
+      genericModal.classList.add('show');
+      modalSaveBtn.style.display = hideActions ? 'none' : '';
+      modalCancelBtn.style.display = hideActions ? 'none' : '';
     }
 
     function hideModal() {
-        genericModal.classList.remove('show');
+      genericModal.classList.remove('show');
     }
 
     closeModalBtn.addEventListener('click', hideModal);
     modalCancelBtn.addEventListener('click', hideModal);
-    // modalSaveBtn event listener is now set dynamically in showModal
+
+    modalSaveBtn.addEventListener('click', () => {
+      const title = modalTitle.textContent;
+      if (title.includes('Settings')) {
+        settingsSchema.forEach(field => {
+          const input = document.getElementById(field.id);
+          if (input) {
+            let value = field.type === 'number' ? parseFloat(input.value) : input.value;
+            if (field.key === 'speechVolume') {
+              vc.config.speechVolume = value;
+            } else if (field.key === 'voiceGender') {
+              vc.config.voiceGender = value;
+              vc.selectVoice();
+            } else if (vc.state.currentScenario && vc.state.currentScenario.hasOwnProperty(field.key)) {
+              vc.state.currentScenario[field.key] = value;
+            }
+          }
+        });
+        vc.log('Settings saved. Current Scenario:', vc.state.currentScenario);
+      } else if (title.includes('Persona')) {
+        personaSchema.forEach(field => {
+          const input = document.getElementById(field.id);
+          if (input) {
+            if (field.key === 'customerPersona') {
+              vc.customerPersona = input.value;
+            } else if (field.key === 'qualityAssistantPersona') {
+              vc.qualityAssistantPersona = input.value;
+            } else if (field.key === 'flowManagerPersona') {
+              vc.flowManagerPersona = input.value;
+            }
+          }
+        });
+        vc.log('Personas saved.');
+      }
+      hideModal();
+    });
 
     document.getElementById('open-settings').addEventListener('click', () => {
-        let scenarioOptionsHtml = '';
-        const allScenarios = [];
-        for (const category in window.complaints) {
-            window.complaints[category].forEach(scenario => {
-                allScenarios.push(scenario);
-            });
-        }
-
-        // Create options for the dropdown
-        for (const category in window.complaints) {
-            scenarioOptionsHtml += `<optgroup label="${category.charAt(0).toUpperCase() + category.slice(1)}">`;
-            window.complaints[category].forEach(scenario => {
-                const selected = (scenario === currentScenario) ? 'selected' : ''; // Compare full scenario object
-                scenarioOptionsHtml += `<option value="${scenario.id}" ${selected}>${scenario.scenario}</option>`;
-            });
-            scenarioOptionsHtml += `</optgroup>`;
-        }
-
-        showModal('Settings', `
-            <p>Adjust application settings here.</p>
-            <label style="display: flex; align-items: center; gap: 0.5rem;">
-                API Key:
-                <input type="password" id="settingApiKey" value="${API_KEY}" placeholder="Enter your API Key">
-                <a href="https://aistudio.google.com/app/apikey" target="_blank" title="Manage your Google AI Studio API Keys" style="color: var(--accent-color); text-decoration: none;">🔗</a>
-            </label>
-            <label>
-                Enable Quality Scoring:
-                <input type="checkbox" id="settingEnableQuality" checked>
-            </label>
-            <label>
-                Speech Volume:
-                <input type="range" id="settingSpeechVolume" min="0" max="1" step="0.1" value="${speechService.volume}">
-                <span id="speechVolumeValue">${speechService.volume}</span>
-            </label>
-            <label>
-                Auto-Send Delay (seconds):
-                <input type="number" id="settingAutoSendDelay" min="1" max="10" step="0.5" value="${autoSendDelay / 1000}">
-            </label>
-            <label>
-                Call Scenario:
-                <select id="settingCallScenario">
-                    ${scenarioOptionsHtml}
-                </select>
-                <p style="font-size: 0.8em; color: var(--text-secondary); margin-top: 0.5rem;">Note: Voice quality depends on your browser's installed voices.</p>
-            </label>
-        `, () => {
-            // Save settings logic
-            speechService.setVolume(parseFloat(document.getElementById('settingSpeechVolume').value));
-            autoSendDelay = parseFloat(document.getElementById('settingAutoSendDelay').value) * 1000; // Convert to milliseconds
-            
-            const selectedScenarioId = document.getElementById('settingCallScenario').value;
-            // Find the selected scenario object
-            let selectedScenario = null;
-            for (const category in window.complaints) {
-                selectedScenario = window.complaints[category].find(s => s.id === selectedScenarioId);
-                if (selectedScenario) break;
-            }
-            currentScenario = selectedScenario;
-            currentInitialCustomerScenarioText = currentScenario ? currentScenario.initialComplaint : "Hello, how can I help you today?";
-
-
-            console.log('Settings saved:', { speechVolume: speechService.volume, autoSendDelay, currentScenario });
-            hideModal();
-            startNewRolePlay(); // Restart role play with new scenario
-        });
-
-        // Update volume display dynamically
-        const speechVolumeSlider = document.getElementById('settingSpeechVolume');
-        const speechVolumeValueSpan = document.getElementById('speechVolumeValue');
-        speechVolumeSlider.oninput = () => {
-            speechVolumeValueSpan.textContent = speechVolumeSlider.value;
-        };
+      showModal('Adjust Settings', settingsSchema, {
+        customerTemperature: vc.state.currentScenario ? vc.state.currentScenario.customerTemperature : 0.7,
+        customerTopK: vc.state.currentScenario ? vc.state.currentScenario.customerTopK : 40,
+        customerTopP: vc.state.currentScenario ? vc.state.currentScenario.customerTopP : 0.8,
+        customerMaxOutputTokens: vc.state.currentScenario ? vc.state.currentScenario.customerMaxOutputTokens : 100,
+        speechVolume: vc.config.speechVolume,
+        voiceGender: vc.config.voiceGender
+      });
     });
 
     document.getElementById('open-persona').addEventListener('click', () => {
-        showModal('Persona Selection', `
-            <p>Choose or customize AI personas for role-play.</p>
-            <label>
-                Customer Persona:
-                <textarea id="personaCustomer" rows="4" placeholder="Describe the customer persona">${customerPersona}</textarea>
-            </label>
-            <label>
-                Quality Assistant Persona:
-                <textarea id="personaQuality" rows="4" placeholder="Describe the quality assistant persona">${qualityAssistantPersona}</textarea>
-            </label>
-            <label>
-                Flow Manager Persona:
-                <textarea id="personaFlowManager" rows="4" placeholder="Describe the flow manager persona">${flowManagerPersona}</textarea>
-            </label>
-        `, () => {
-            // Save persona logic
-            customerPersona = document.getElementById('personaCustomer').value;
-            qualityAssistantPersona = document.getElementById('personaQuality').value;
-            flowManagerPersona = document.getElementById('personaFlowManager').value;
-            console.log('Personas saved:', { customerPersona, qualityAssistantPersona, flowManagerPersona });
-            hideModal();
-        });
+      showModal('Adjust Personas', personaSchema, {
+        customerPersona: vc.customerPersona,
+        qualityAssistantPersona: vc.qualityAssistantPersona,
+        flowManagerPersona: vc.flowManagerPersona
+      });
     });
 
-    // --- Save Call Button Logic ---
-    saveCallBtn.addEventListener('click', () => {
-        if (!window.firebaseDb || !window.getUserId()) {
-            showModal('Save Error', '<p>Firebase is not initialized or user not authenticated. Cannot save call. Please ensure you are connected to the internet and refresh the page.</p>', null);
-            return;
-        }
+    // Button events
+    startBtn.onclick = () => {
+      vc.startConversation();
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      sendBtn.disabled = false;
+      statusText.textContent = 'Listening...';
+      statusIndicator.className = 'status-indicator listening';
+      transcriptDisplay.disabled = false;
+      transcriptDisplay.value = '';
+      transcriptDisplay.focus();
+    };
 
-        showModal('Save Call', `
-            <label>
-                Call Name:
-                <input type="text" id="callNameInput" placeholder="e.g., Billing Inquiry Practice 1">
-            </label>
-        `, async () => {
-            const callName = document.getElementById('callNameInput').value.trim();
-            if (!callName) {
-                showModal('Save Error', '<p>Please enter a name for the call.</p>', null);
-                return;
-            }
+    stopBtn.onclick = () => {
+      vc.stopConversation();
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      sendBtn.disabled = true;
+      statusText.textContent = 'Stopped';
+      statusIndicator.className = 'status-indicator';
+      transcriptDisplay.disabled = true;
+      transcriptDisplay.value = '';
+    };
 
-            try {
-                const db = window.firebaseDb;
-                const userId = window.getUserId();
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    sendBtn.onclick = () => {
+      const message = transcriptDisplay.value.trim();
+      if (message) {
+        vc.processUserMessage(message);
+        transcriptDisplay.value = '';
+        vc.state.userEditing = false;
+        sendBtn.disabled = true;
+      }
+    };
 
-                // Path for private user data
-                const callsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/calls`);
+    silenceDelaySelect.onchange = (e) => {
+      vc.config.silenceDelay = parseInt(e.target.value, 10);
+      silenceTimerElem.textContent = `Auto-send in ${e.target.value / 1000}s`;
+    };
 
-                const callData = {
-                    callName: callName,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp(), // Use server timestamp
-                    chatHistory: chatHistory,
-                    qualityFeedback: qualityFeedbackHistory,
-                    scenario: currentScenario ? currentScenario.id : 'random_scenario', // Save scenario ID
-                    userId: userId
-                };
-
-                await addDoc(callsCollectionRef, callData);
-                console.log("Call saved successfully!");
-                showModal('Success', `<p>Call "${callName}" saved successfully!</p>`, null);
-            } catch (e) {
-                console.error("Error saving call:", e);
-                showModal('Error', `<p>Failed to save call: ${e.message}</p>`, null);
-            }
-        });
+    // Transcript updates
+    vc.addEventListener('transcription_update', (e) => {
+      const { text } = e.detail;
+      if (!vc.state.userEditing) {
+        transcriptDisplay.value = text || '';
+      }
+      sendBtn.disabled = transcriptDisplay.value.trim() === '';
     });
-    // --- End Save Call Button Logic ---
 
-    // --- S4 Progress Indicator Logic ---
-    function updateS4Progress(phase) {
-        // Reset all phases first
-        for (const key in s4Phases) {
-            s4Phases[key].classList.remove('active', 'completed');
+    vc.addEventListener('user_message', (e) => {
+      addMessage(e.detail.message, 'user', 'Agent');
+    });
+
+    vc.addEventListener('assistant_message', (e) => {
+      addMessage(e.detail.message, 'assistant', e.detail.sender);
+    });
+
+    vc.addEventListener('quality_feedback', (e) => {
+      addQualityFeedback(e.detail.score, e.detail.comment, e.detail.details);
+      updateS4Progress(e.detail.details.s4Phase || vc.state.currentS4Phase);
+    });
+
+    vc.addEventListener('listening_started', () => {
+      statusText.textContent = 'Listening...';
+      statusIndicator.className = 'status-indicator listening';
+      sendBtn.disabled = false;
+    });
+
+    vc.addEventListener('listening_stopped', () => {
+      statusText.textContent = 'Paused';
+      statusIndicator.className = 'status-indicator';
+    });
+
+    vc.addEventListener('speaking_started', () => {
+      statusText.textContent = 'Speaking...';
+      statusIndicator.className = 'status-indicator speaking';
+      sendBtn.disabled = true;
+    });
+
+    vc.addEventListener('speaking_finished', () => {
+      statusText.textContent = 'Listening...';
+      statusIndicator.className = 'status-indicator listening';
+      sendBtn.disabled = false;
+    });
+
+    vc.addEventListener('silence_timer_reset', () => {
+      silenceTimerElem.classList.add('active');
+    });
+
+    vc.addEventListener('silence_detected', () => {
+      silenceTimerElem.classList.remove('active');
+    });
+
+    vc.addEventListener('conversation_started', (e) => {
+      chat.querySelector('.messages').innerHTML = '';
+      qualityFeedbackPanel.innerHTML = '<div class="quality-comment">Feedback will appear here after each of your responses.</div>';
+      resetS4Progress();
+      addMessage(
+        `System: Starting new call with ${e.detail.scenario.customerName} and their initial complaint is: "${e.detail.scenario.initialCustomerComplaint}". Please begin the call.`,
+        'assistant',
+        'System'
+      );
+    });
+
+    vc.addEventListener('error', (e) => {
+      addMessage(`Error: ${e.detail.message}`, 'assistant', 'System');
+      statusText.textContent = `Error: ${e.detail.message}`;
+      statusIndicator.className = 'status-indicator';
+    });
+
+    transcriptDisplay.addEventListener('input', () => {
+      vc.state.userEditing = true;
+      vc.clearSilenceTimer();
+      sendBtn.disabled = transcriptDisplay.value.trim() === '';
+    });
+
+    transcriptDisplay.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (transcriptDisplay.value.trim()) {
+          vc.processUserMessage(transcriptDisplay.value.trim());
+          transcriptDisplay.value = '';
+          vc.state.userEditing = false;
+          sendBtn.disabled = true;
         }
+      }
+    });
 
-        let foundActive = false;
-        for (const key of ['S1', 'S2', 'S3', 'S4']) { // Ensure correct order
-            if (key === phase) {
-                s4Phases[key].classList.add('active');
-                foundActive = true;
-            } else if (!foundActive) {
-                // This condition means 'key' is a phase *before* the current 'phase'
-                s4Phases[key].classList.add('completed');
-            }
-            // If foundActive is true, and key is not 'phase', then it's a future phase, so leave it default (grey)
-        }
-    }
-
-    // Function to start a new role-play session
-    function startNewRolePlay() {
-        chatHistory = []; // Clear history
-        qualityFeedbackHistory = []; // Clear quality feedback history
-        chat.querySelector('.messages').innerHTML = ''; // Clear chat display
-        qualityFeedbackPanel.innerHTML = '<div class="quality-comment">Feedback will appear here after each of your responses.</div>';
-        updateStatus('Start your call by speaking into the microphone.');
-        currentS4Phase = 'S1'; // Reset S4 phase
-        updateS4Progress(currentS4Phase); // Reset S4 progress to S1
-
-        // Add a prominent initial message about microphone permissions
-        addMessage("Welcome! To use the simulator, please ensure your browser has microphone access enabled. If you encounter issues, check your browser's site settings for microphone permissions and refresh the page.", 'ai', 'System:');
-
-        // Flatten all scenarios into a single array for random selection
-        const allScenarios = [];
-        for (const category in window.complaints) {
-            if (window.complaints && typeof window.complaints === 'object' && window.complaints[category]) {
-                window.complaints[category].forEach(scenario => {
-                    allScenarios.push(scenario);
-                });
-            }
-        }
-        
-        // Randomly select a new scenario, different from the previous one if possible
-        let newScenario = null;
-        if (allScenarios.length > 1) {
-            do {
-                const randomIndex = Math.floor(Math.random() * allScenarios.length);
-                newScenario = allScenarios[randomIndex];
-            } while (newScenario === currentScenario); // Keep shuffling if it's the same as last time
-        } else if (allScenarios.length === 1) {
-            newScenario = allScenarios[0];
-        } else {
-            newScenario = { id: 'default', scenario: 'Default Scenario', initialComplaint: "Hello, how can I help you today?", customerName: "Customer", customerGender: "neutral" };
-        }
-        currentScenario = newScenario;
-        currentInitialCustomerScenarioText = currentScenario.initialComplaint;
-
-        // The customer does NOT start the call. The agent (user) starts.
-        // The customer's initial complaint will be the *context* for the agent's first response.
-        // We will add a system message to set the scene.
-        addMessage(`Scenario: ${currentScenario.scenario}. The customer is ${currentScenario.customerName} and their initial complaint is: "${currentInitialCustomerScenarioText}". Please begin the call.`, 'ai', 'System:');
-        
-        // No initial customer message pushed to chatHistory here. The first user message will be the agent's greeting.
-        // The first customer message will be generated by the AI after the agent's first turn.
-    }
-
-    // Initial setup when the page loads
     document.addEventListener('DOMContentLoaded', () => {
-        // Ensure Firebase is initialized before proceeding with app logic that depends on it
-        const checkFirebaseReady = setInterval(() => {
-            if (window.firebaseDb && window.getUserId() !== 'anonymous') {
-                clearInterval(checkFirebaseReady);
-                console.log("Firebase is ready. User ID:", window.getUserId());
-                startNewRolePlay();
-            } else if (window.firebaseDb && window.getUserId() === 'anonymous' && typeof __initial_auth_token === 'undefined') {
-                clearInterval(checkFirebaseReady);
-                console.log("Firebase ready with anonymous user ID:", window.getUserId());
-                startNewRolePlay();
-            } else if (!window.firebaseConfig) {
-                clearInterval(checkFirebaseReady);
-                console.warn("Firebase config not found. Proceeding without call saving.");
-                startNewRolePlay();
-            }
-        }, 100);
+      const complaintsScript = document.querySelector('script[src="complaints.js"]');
+      if (complaintsScript) {
+        complaintsScript.addEventListener('error', () => {
+          vc.log("Failed to load complaints.js. Using fallback scenario.");
+        });
+        complaintsScript.addEventListener('load', () => {
+          vc.log("complaints.js loaded successfully.");
+          vc.scenarios = window.COMPLAINTS_DATA || vc.scenarios;
+          vc.startConversation();
+        });
+      } else {
+        vc.log("complaints.js script tag not found.");
+        vc.startConversation();
+      }
     });
   </script>
 </body>
