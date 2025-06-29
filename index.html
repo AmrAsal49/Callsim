@@ -1,0 +1,2182 @@
+// app.ts (This file should be in the root directory: comcast-s4-simulator/app.ts)
+
+// ============================================
+// GLOBAL WINDOW INTERFACE DECLARATIONS
+// ============================================
+declare global {
+    interface Window {
+        app: CallSimulatorApp;
+        // SpeechRecognition and webkitSpeechRecognition are removed as we're moving to backend STT
+        // SpeechSynthesis and SpeechSynthesisUtterance are removed as we're moving to backend TTS
+    }
+}
+
+// ============================================
+// TYPE DEFINITIONS (Inlined from types.ts)
+// ============================================
+
+export type CallSegment = 'S1' | 'S2' | 'S3' | 'S4' | 'Completed';
+
+export interface Scenario {
+    id: string;
+    name: string;
+    description: string;
+    customerPersonality: CustomerPersonalityType;
+    initialCustomerMessage: string;
+    difficulty: 'easy' | 'medium' | 'hard';
+    // Add a flag for sales opportunity in scenario
+    salesOpportunity: boolean;
+}
+
+export type CustomerPersonalityType = 'demanding_but_fair' | 'confused_and_frustrated' | 'talkative_and_friendly';
+
+export type AgentPersonaType = 'standard' | 'experienced' | 'new_hire';
+
+export interface Message {
+    sender: 'agent' | 'customer' | 'system'; // Added 'system' for app messages
+    text: string;
+    timestamp: number;
+}
+
+export interface Session {
+    id: string;
+    scenarioId: string;
+    startTime: number;
+    endTime?: number;
+    messages: Message[];
+    chatHistory: { role: string; parts: { text: string; }[] }[]; // Gemini API specific format
+    customerEmotionalState: CustomerEmotionalState;
+    customerExpectation: CustomerExpectation;
+    scores: OverallScores;
+    coachAnalysis: CoachAnalysis[];
+    status: 'active' | 'paused' | 'completed' | 'failed';
+    currentSegment: CallSegment; // Track current call segment
+    scenario: Scenario; // Reference to the active scenario
+}
+
+export interface CustomerEmotionalState {
+    level: 'neutral' | 'slightly_frustrated' | 'frustrated' | 'angry' | 'hopeful' | 'satisfied';
+    reason?: string;
+}
+
+export interface CustomerExpectation {
+    focus: 'issue_resolution' | 'understanding_account' | 'finding_value' | 'call_completion' | 'sales_pitch';
+    priority: 'high' | 'medium' | 'low';
+}
+
+export interface S4CriterionDetail {
+    id: string;
+    name: string;
+    description: string;
+    section: 'S1' | 'S2' | 'S3' | 'S4' | 'Behaviors';
+    he?: { score: number; wordsThatWork: string[]; description?: string; };
+    me: { score: number; wordsThatWork: string[]; description?: string; };
+    be: { score: 0; description?: string; };
+    possibleScore: number;
+    weight: number;
+    sectionWeight: number; // Weight within its section (e.g., 5/22 for S1)
+    mandatoryForSegmentCompletion?: boolean; // New flag for segment transition
+}
+
+export interface CriticalFailureDetail {
+    id: string;
+    category: 'Section Failure' | 'Auto-Fail Behavior';
+    name: string;
+    description: string;
+    consequence: 'deduct_s1' | 'deduct_s2' | 'deduct_s4' | 'overall_zero';
+    deductionPoints?: number;
+}
+
+export interface FeedbackItem {
+    criterionId: string;
+    type: 'positive' | 'improvement' | 'critical_failure';
+    scoreAchieved?: number;
+    maxPossibleScore?: number;
+    reasoning: string;
+    suggestions?: string[];
+    examples?: string[];
+}
+
+export interface CoachAnalysis {
+    timestamp: number;
+    agentMessage: string;
+    feedback: FeedbackItem[];
+    overallSummary?: string;
+    currentSectionScores?: {
+        S1?: number;
+        S2?: number;
+        S3?: number;
+        S4?: number;
+        Behaviors?: number;
+    };
+    overallSessionScores?: OverallScores;
+    segmentAdvancedTo?: CallSegment; // New: indicates if segment advanced
+}
+
+export interface OverallScores {
+    s1Start: number;
+    s2Solve: number;
+    s3Sell: number;
+    s4Summarize: number;
+    behaviors: number;
+
+    pinnacleScore: number;
+    fcr: { achieved: boolean; score: number; };
+    tsr: { achieved: boolean; score: number; }; // Total Service Requests (Sales)
+    loqItgCompliance: { achieved: boolean; score: number; };
+    aht: number; // Average Handle Time (in seconds)
+    productKnowledgeCompliance: boolean;
+    
+    sectionFailures: {
+        s1Authentication: boolean;
+        s2AccountActions: boolean;
+        s4TpvProcess: boolean;
+    };
+    autoFailures: {
+        rudeness: boolean;
+        callAvoidance: boolean;
+        inappropriateTransfer: boolean;
+    };
+    overallGradeZero: boolean;
+}
+
+
+// ============================================
+// CUSTOMER AI - Simulates Different Customer Types (Inlined)
+// ============================================
+
+interface CustomerPersonalityInternal {
+    keywords: {
+        greeting?: string[];
+        apology?: string[];
+        solution_offered?: string[];
+        empathy_shown?: string[];
+        sales_attempt?: string[];
+        objection_handled?: string[];
+        summary_given?: string[];
+        positive_close?: string[];
+        default: string[];
+    };
+    emotionalTriggers: {
+        positive: string[];
+        negative: string[];
+        salesResistance: string[];
+        solutionConfirmation: string[];
+        lackOfEmpathy: string[];
+        rushedTone: string[];
+        unclearExplanation: string[];
+    };
+    expectationTriggers: {
+        problemIdentification: string[];
+        solutionOffering: string[];
+        valueProposition: string[];
+        callConclusion: string[];
+        salesEngagement: string[]; // For S3
+    }
+}
+
+export class CustomerAI {
+    private currentEmotionalState: CustomerEmotionalState = { level: 'neutral' };
+    private currentExpectation: CustomerExpectation = { focus: 'issue_resolution', priority: 'high' };
+    private customerPersonality: CustomerPersonalityInternal;
+    private initialCustomerProblem: string;
+    private hasProblemBeenAcknowledged: boolean = false;
+    private hasProblemBeenSolved: boolean = false;
+    private hasSalesPitchBeenAttempted: boolean = false;
+    private hasValueBeenBuilt: boolean = false;
+    private hasObjectionBeenRaised: boolean = false;
+    private hasCallBeenSummarized: boolean = false;
+    private hasCallBeenClosed: boolean = false;
+    private sessionMessages: Message[] = [];
+    private chatHistory: { role: string; parts: { text: string; }[] }[] = [];
+
+    private personalities: { [key in CustomerPersonalityType]: CustomerPersonalityInternal } = {
+        demanding_but_fair: {
+            keywords: {
+                greeting: ["hello", "hi", "good day", "comcast"],
+                apology: ["sorry for", "apologize for", "regret"],
+                solution_offered: ["resolve", "fix", "solution", "taken care of"],
+                empathy_shown: ["understand", "frustrating", "apologize", "sorry to hear"],
+                sales_attempt: ["upgrade", "offer", "bundle", "value", "add on", "more for"],
+                objection_handled: ["I understand", "however", "let me explain", "point taken"],
+                summary_given: ["recap", "summarize", "review"],
+                positive_close: ["thank you", "goodbye", "have a great day", "bye now"],
+                default: ["Okay, what can you do for me?", "Alright, I'm listening.", "Hmm, go on.", "What's the next step?"]
+            },
+            emotionalTriggers: {
+                positive: ["resolve", "fix", "solution", "thank you", "understand", "apologize", "happy", "great", "perfect"],
+                negative: ["can't", "no", "problem", "issue", "unfortunately", "I don't know", "frustrating", "angry", "long time"],
+                salesResistance: ["not interested", "no thanks", "too expensive", "I'm good", "don't need"],
+                solutionConfirmation: ["fixed", "working", "resolved", "that's right"],
+                lackOfEmpathy: ["no problem", "it's fine", "just doing my job", "don't care"],
+                rushedTone: ["okay, what else?", "next item", "hurry up"],
+                unclearExplanation: ["I don't understand", "what does that mean?", "can you explain?", "not clear"]
+            },
+            expectationTriggers: {
+                problemIdentification: ["what seems to be the problem?", "tell me about", "what's going on"],
+                solutionOffering: ["I can resolve that", "here's what we can do", "my solution is"],
+                valueProposition: ["you'll save", "benefits of", "more for your money", "worth it"],
+                callConclusion: ["anything else?", "all set?", "have a great day", "are we done"],
+                salesEngagement: ["interested in", "learn about", "what kind of offer"]
+            }
+        },
+        confused_and_frustrated: {
+            keywords: {
+                greeting: ["hello", "hi"],
+                apology: ["sorry about that", "my apologies"],
+                solution_offered: ["fix", "help", "solve"],
+                empathy_shown: ["I understand", "frustrating", "difficult"],
+                sales_attempt: ["new service", "more channels", "bundle offer"],
+                objection_handled: ["but", "what if", "still confused"],
+                summary_given: ["so what happened", "recap", "what's next"],
+                positive_close: ["okay", "thanks", "got it"],
+                default: ["I'm not sure I understand.", "Can you explain that again?", "What do I do now?", "This is confusing."]
+            },
+            emotionalTriggers: {
+                positive: ["clear", "easy", "understand", "help", "simple"],
+                negative: ["confused", "don't know", "can't", "stuck", "frustrated"],
+                salesResistance: ["too much", "I just need", "not for me"],
+                solutionConfirmation: ["got it", "makes sense", "understood"],
+                lackOfEmpathy: ["just restart it", "it's simple"],
+                rushedTone: ["hurry up", "come on"],
+                unclearExplanation: ["I don't get it", "what did you say?", "explain again"]
+            },
+            expectationTriggers: {
+                problemIdentification: ["what's wrong?", "describe the issue", "my problem is"],
+                solutionOffering: ["how can you fix this?", "what's the next step?", "what's the solution"],
+                valueProposition: ["why do I need that?", "what's in it for me?"],
+                callConclusion: ["is that all?", "are we done?", "finished"],
+                salesEngagement: ["what new services", "tell me about offers"]
+            }
+        },
+        talkative_and_friendly: {
+            keywords: {
+                greeting: ["hello there", "hi, how are you?", "lovely day"],
+                apology: ["oh, that's alright", "no worries", "don't worry"],
+                solution_offered: ["great", "perfect", "wonderful", "fantastic"],
+                empathy_shown: ["that's so nice of you", "I appreciate that", "how kind"],
+                sales_attempt: ["interesting", "tell me more", "sounds fun"],
+                objection_handled: ["well", "let's see", "hmm, you have a point"],
+                summary_given: ["okay, so", "just to recap", "in summary"],
+                positive_close: ["talk to you later", "bye for now", "have a blessed day", "cheers"],
+                default: ["Oh, that's interesting!", "Tell me more about that!", "How lovely!", "That sounds nice!"]
+            },
+            emotionalTriggers: {
+                positive: ["happy", "great", "thank you", "love it", "wonderful", "awesome"],
+                negative: ["oh dear", "that's a shame", "not good", "unfortunate"],
+                salesResistance: ["I'll think about it", "maybe another time", "not right now"],
+                solutionConfirmation: ["perfect", "wonderful", "sounds good"],
+                lackOfEmpathy: ["that's not my problem", "get to the point"],
+                rushedTone: ["whoa, slow down there!", "a bit fast"],
+                unclearExplanation: ["hmm, I'm not quite following.", "could you clarify?"]
+            },
+            expectationTriggers: {
+                problemIdentification: ["what's the scoop?", "what's happening?", "what's up"],
+                solutionOffering: ["what's the fix?", "how will this pan out?", "what's your idea"],
+                valueProposition: ["what's the buzz?", "what's special about it?"],
+                callConclusion: ["anything else for me?", "all done?", "anything else you need"],
+                salesEngagement: ["what exciting new things", "what's trending"]
+            }
+        }
+    };
+
+    constructor(personalityType: CustomerPersonalityType, initialProblem: string) {
+        this.customerPersonality = this.personalities[personalityType];
+        this.initialCustomerProblem = initialProblem;
+    }
+
+    public addMessage(message: Message) {
+        this.sessionMessages.push(message);
+        // Only add agent/customer messages to chatHistory for Gemini API format if it's used
+        if (message.sender !== 'system') {
+            this.chatHistory.push({ role: message.sender, parts: [{ text: message.text }] });
+        }
+    }
+
+    public getChatHistory(): { role: string; parts: { text: string; }[] }[] {
+        return this.chatHistory;
+    }
+
+    public getCurrentEmotionalState(): CustomerEmotionalState {
+        return this.currentEmotionalState;
+    }
+
+    public getCurrentExpectation(): CustomerExpectation {
+        return this.currentExpectation;
+    }
+
+    public async generateContextualResponse(agentMessage: string, currentSegment: CallSegment, scenario: Scenario): Promise<string> {
+        this.updateEmotionalState(agentMessage);
+        this.determineNextExpectation(agentMessage, currentSegment, scenario);
+
+        const lowerCaseMessage = agentMessage.toLowerCase();
+        let responses: string[] = [];
+        // Removed random delay, setting to a minimal value for natural turn-taking
+        let delay = 100; 
+
+        // --- Contextual Responses based on Segment and Agent Actions ---
+
+        if (currentSegment === 'S1') {
+            if (this.customerPersonality.keywords.greeting?.some(kw => lowerCaseMessage.includes(kw))) {
+                responses = ["Hello! Thanks for picking up.", "Hi there.", "Good day!"];
+            } else if (this.hasProblemBeenAcknowledged && this.customerPersonality.keywords.apology?.some(kw => lowerCaseMessage.includes(kw))) {
+                responses = ["It's alright, just looking for a solution.", "Thanks for the apology."];
+            } else if (this.customerPersonality.keywords.empathy_shown?.some(kw => lowerCaseMessage.includes(kw))) {
+                responses = ["I appreciate you understanding.", "It really is frustrating."];
+            } else if (lowerCaseMessage.includes(this.initialCustomerProblem.toLowerCase().split(' ')[0]) || lowerCaseMessage.includes("issue") || lowerCaseMessage.includes("problem")) {
+                 this.hasProblemBeenAcknowledged = true;
+                 responses = ["Yes, that's right.", "That's exactly it.", "Can you help with that?"];
+            } else if (lowerCaseMessage.includes("security purposes") || lowerCaseMessage.includes("authenticate") || lowerCaseMessage.includes("verify")) {
+                 responses = ["Sure, how do you need to authenticate?", "Okay, what information do you need?"];
+            }
+        } else if (currentSegment === 'S2') {
+            if (this.customerPersonality.keywords.solution_offered?.some(kw => lowerCaseMessage.includes(kw))) {
+                this.hasProblemBeenSolved = true;
+                responses = ["Thank you for fixing that!", "Perfect, it seems to be working now.", "That sounds like a solution."];
+            } else if (lowerCaseMessage.includes("account review") && !this.hasValueBeenBuilt) {
+                this.hasValueBeenBuilt = true;
+                responses = ["Okay, I'm open to an account review if it helps me.", "What do you mean by 'best value' for my services?"];
+            } else if (lowerCaseMessage.includes("troubleshoot") || lowerCaseMessage.includes("diagnose")) {
+                responses = ["What steps should I follow?", "Okay, I'm ready to try."];
+            } else if (this.hasValueBeenBuilt && (lowerCaseMessage.includes("benefits") || lowerCaseMessage.includes("features"))) {
+                responses = ["Tell me more about those benefits.", "How would that help me?"];
+            }
+        } else if (currentSegment === 'S3' && scenario.salesOpportunity) {
+            if (this.customerPersonality.keywords.sales_attempt?.some(kw => lowerCaseMessage.includes(kw))) {
+                this.hasSalesPitchBeenAttempted = true;
+                // Simple resistance mechanism
+                if (Math.random() < 0.5 && !this.hasObjectionBeenRaised) { // 50% chance to raise an objection once
+                    this.hasObjectionBeenRaised = true;
+                    responses = this.customerPersonality.emotionalTriggers.salesResistance;
+                    return responses[Math.floor(Math.random() * responses.length)]; // Return immediately
+                } else {
+                    responses = ["What kind of value are we talking about?", "Tell me more about that.", "Sounds interesting, go on."];
+                }
+            } else if (this.customerPersonality.keywords.objection_handled?.some(kw => lowerCaseMessage.includes(kw)) && this.hasObjectionBeenRaised) {
+                responses = ["Okay, I hear you.", "I guess I can consider it.", "That makes sense."];
+                this.hasObjectionBeenRaised = false; // Objection handled
+            } else if (lowerCaseMessage.includes("bundle") || lowerCaseMessage.includes("package")) {
+                responses = ["What's included in that bundle?", "How much would that cost?"];
+            } else if (lowerCaseMessage.includes("add to account") || lowerCaseMessage.includes("set up")) {
+                responses = ["Okay, let's do it.", "Sounds good, add it on."];
+                this.currentEmotionalState.level = 'satisfied'; // Indicate sales acceptance
+                this.currentExpectation.focus = 'call_completion';
+                this.hasCallBeenClosed = true; // For a quick transition to S4 completion
+            }
+        } else if (currentSegment === 'S4') {
+            if (this.customerPersonality.keywords.summary_given?.some(kw => lowerCaseMessage.includes(kw)) && this.hasProblemBeenSolved) {
+                this.hasCallBeenSummarized = true;
+                responses = ["Yes, that sounds right.", "Okay, I understand everything now.", "Perfect, thank you for summarizing."];
+                delay += 300;
+            } else if (this.customerPersonality.keywords.positive_close?.some(kw => lowerCaseMessage.includes(kw)) && this.hasCallBeenSummarized) {
+                this.hasCallBeenClosed = true;
+                responses = ["Thank you for your help!", "Goodbye!", "Have a great day!", "Appreciate it!"];
+                delay += 500;
+            } else if (lowerCaseMessage.includes("anything else") || lowerCaseMessage.includes("further assistance")) {
+                responses = ["No, I think that's all for me.", "I'm good, thank you."];
+            }
+        }
+
+        // Default responses if no specific keywords are matched, or if outside of primary flow expectations
+        if (responses.length === 0) {
+            responses = this.customerPersonality.keywords.default;
+            if (this.currentEmotionalState.level === 'frustrated' || this.currentEmotionalState.level === 'angry') {
+                responses = ["I'm still not happy.", "This is taking too long.", "Can you just fix it?", "Why isn't this resolved?"];
+            } else if (this.currentEmotionalState.level === 'confused_and_frustrated') {
+                responses = ["I don't understand.", "What are you talking about?", "Please explain it simply.", "I'm lost."];
+            } else if (currentSegment === 'S3' && !scenario.salesOpportunity) {
+                 responses = ["I'm not interested in new services right now.", "I just want my issue resolved, thanks."];
+            }
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return responses[Math.floor(Math.random() * responses.length)];
+    }
+
+    private updateEmotionalState(agentMessage: string): void {
+        const lowerCaseMessage = agentMessage.toLowerCase();
+
+        // Higher impact negative triggers
+        if (this.customerPersonality.emotionalTriggers.lackOfEmpathy.some(kw => lowerCaseMessage.includes(kw)) ||
+            this.customerPersonality.emotionalTriggers.rushedTone.some(kw => lowerCaseMessage.includes(kw)) ||
+            this.customerPersonality.emotionalTriggers.unclearExplanation.some(kw => lowerCaseMessage.includes(kw))) {
+            switch (this.currentEmotionalState.level) {
+                case 'neutral': this.currentEmotionalState.level = 'slightly_frustrated'; break;
+                case 'slightly_frustrated': this.currentEmotionalState.level = 'frustrated'; break;
+                case 'frustrated': this.currentEmotionalState.level = 'angry'; break;
+                case 'hopeful': this.currentEmotionalState.level = 'neutral'; break; // Can drop from hopeful
+                case 'satisfied': this.currentEmotionalState.level = 'hopeful'; break; // Can drop from satisfied
+            }
+            this.currentEmotionalState.reason = "Agent's tone or lack of empathy/clarity.";
+            return;
+        }
+
+        // General positive/negative keywords
+        if (this.customerPersonality.emotionalTriggers.positive.some(kw => lowerCaseMessage.includes(kw))) {
+            switch (this.currentEmotionalState.level) {
+                case 'angry': this.currentEmotionalState.level = 'frustrated'; break;
+                case 'frustrated': this.currentEmotionalState.level = 'slightly_frustrated'; break;
+                case 'slightly_frustrated': this.currentEmotionalState.level = 'neutral'; break;
+                case 'neutral': this.currentEmotionalState.level = 'hopeful'; break;
+                case 'hopeful': this.currentEmotionalState.level = 'satisfied'; break;
+            }
+            this.currentEmotionalState.reason = "Agent used positive language or provided a solution.";
+        } else if (this.customerPersonality.emotionalTriggers.negative.some(kw => lowerCaseMessage.includes(kw))) {
+            switch (this.currentEmotionalState.level) {
+                case 'satisfied': this.currentEmotionalState.level = 'hopeful'; break;
+                case 'hopeful': this.currentEmotionalState.level = 'neutral'; break;
+                case 'neutral': this.currentEmotionalState.level = 'slightly_frustrated'; break;
+                case 'slightly_frustrated': this.currentEmotionalState.level = 'frustrated'; break;
+                case 'frustrated': this.currentEmotionalState.level = 'angry'; break;
+            }
+            this.currentEmotionalState.reason = "Agent used negative language or caused more confusion.";
+        }
+
+        if (this.currentEmotionalState.level === 'neutral' || this.currentEmotionalState.level === 'satisfied') {
+            this.currentEmotionalState.reason = undefined;
+        }
+    }
+
+    private determineNextExpectation(agentMessage: string, currentSegment: CallSegment, scenario: Scenario): void {
+        const lowerCaseMessage = agentMessage.toLowerCase();
+
+        // Expectations for S1
+        if (currentSegment === 'S1') {
+            if (this.customerPersonality.expectationTriggers.problemIdentification.some(kw => lowerCaseMessage.includes(kw))) {
+                this.currentExpectation = { focus: 'issue_resolution', priority: 'high' };
+            }
+        }
+        // Expectations for S2
+        else if (currentSegment === 'S2') {
+            if (this.customerPersonality.expectationTriggers.solutionOffering.some(kw => lowerCaseMessage.includes(kw))) {
+                this.currentExpectation = { focus: 'understanding_account', priority: 'medium' };
+            } else if (this.customerPersonality.expectationTriggers.valueProposition.some(kw => lowerCaseMessage.includes(kw))) {
+                this.currentExpectation = { focus: 'finding_value', priority: 'low' };
+            }
+        }
+        // Expectations for S3
+        else if (currentSegment === 'S3' && scenario.salesOpportunity) {
+            if (this.customerPersonality.expectationTriggers.salesEngagement.some(kw => lowerCaseMessage.includes(kw))) {
+                this.currentExpectation = { focus: 'sales_pitch', priority: 'high' };
+            }
+        }
+        // Expectations for S4 (after problem solved or sales attempted)
+        else if (currentSegment === 'S4') {
+            if (this.customerPersonality.expectationTriggers.callConclusion.some(kw => lowerCaseMessage.includes(kw))) {
+                this.currentExpectation = { focus: 'call_completion', priority: 'high' };
+            }
+        }
+        // Fallback or general
+        // If the problem is "solved" but call not closed, customer expects conclusion
+        if (this.hasProblemBeenSolved && !this.hasCallBeenClosed && this.currentExpectation.focus !== 'call_completion') {
+            this.currentExpectation = { focus: 'call_completion', priority: 'medium' };
+        }
+    }
+}
+
+
+// ============================================
+// AI COACH - Provides Real-time Feedback (Inlined)
+// ============================================
+
+export const S4_CRITERIA_DETAILS: S4CriterionDetail[] = [
+    // S1: START (22.0% of total score)
+    {
+        id: 's1_greeting',
+        name: 'Greeting',
+        description: 'Emphasizes beginning every conversation positively with a friendly greeting.',
+        section: 'S1',
+        he: undefined, // No 'Highly Effective' defined, ME is max
+        me: {
+            score: 3,
+            wordsThatWork: ["thank you for choosing comcast", "my name is", "how may i help you today"],
+            description: "Agent clearly greeted customer with Comcast name, their first name, and offer of assistance. Pace was unrushed."
+        },
+        be: {
+            score: 0,
+            description: "Greeting incomplete or included extra verbiage; rushed/unintelligible."
+        },
+        possibleScore: 3,
+        weight: 0.03,
+        sectionWeight: 3 / 22,
+        mandatoryForSegmentCompletion: true
+    },
+    {
+        id: 's1_reflect_reason_for_contact',
+        name: 'Reflect Reason for Contact',
+        description: 'Accurately reflect the specific reason for the customer\'s call, using the customer\'s own words.',
+        section: 'S1',
+        he: undefined,
+        me: {
+            score: 5,
+            wordsThatWork: ["you called about", "you're experiencing", "your concern is", "if I understand correctly"],
+            description: "Agent accurately reflected customer's specific reason using their own words, avoiding vague terms like 'that'."
+        },
+        be: {
+            score: 0,
+            description: "Reflection inaccurate/vague, or specific request not paraphrased/recapped."
+        },
+        possibleScore: 5,
+        weight: 0.05,
+        sectionWeight: 5 / 22,
+        mandatoryForSegmentCompletion: true
+    },
+    {
+        id: 's1_relate_empathize',
+        name: 'Relate & Empathize',
+        description: 'Briefly empathize by acknowledging the customer\'s stated feelings or relating to their circumstances.',
+        section: 'S1',
+        he: undefined,
+        me: {
+            score: 5,
+            wordsThatWork: ["i am very sorry that", "i understand how frustrating that can be", "i'm sorry to hear that", "i can certainly see why you'd feel that way"],
+            description: "Agent briefly empathized with customer's situation/feelings without blame."
+        },
+        be: {
+            score: 0,
+            description: "Failed to acknowledge situation/feelings, or made negative statement."
+        },
+        possibleScore: 5,
+        weight: 0.05,
+        sectionWeight: 5 / 22,
+        mandatoryForSegmentCompletion: true
+    },
+    {
+        id: 's1_take_ownership',
+        name: 'Take Ownership/Assure Assistance',
+        description: 'Assure the customer that concrete action will be taken to fulfill their request.',
+        section: 'S1',
+        he: undefined,
+        me: {
+            score: 5,
+            wordsThatWork: ["you've reached the right person", "i can definitely help you with that", "let me take care of this for you", "i'll resolve this for you"],
+            description: "Agent assured concrete action would be taken to fulfill request using positive words."
+        },
+        be: {
+            score: 0,
+            description: "Agent did not fully acknowledge/respond to concerns or take ownership."
+        },
+        possibleScore: 5,
+        weight: 0.05,
+        sectionWeight: 5 / 22,
+        mandatoryForSegmentCompletion: true
+    },
+    {
+        id: 's1_set_agenda_authentication_plant_seed',
+        name: 'Set Agenda / Authentication / Plant Seed',
+        description: 'Ask permission, verify/authenticate caller, and plant seed for account review.',
+        section: 'S1',
+        he: {
+            score: 4,
+            wordsThatWork: [
+                "as i review your account, may i ask a few questions that would help us",
+                "for security purposes, may i ask who i am speaking with",
+                "after we look into your issue, i'd love to look at your account to ensure you are getting the best value"
+            ],
+            description: "Agent asked permission for questions, verified/authenticated caller, and planted seed for account review effectively."
+        },
+        me: {
+            score: 2,
+            wordsThatWork: ["may i ask some questions", "can i verify your account", "i'd like to check your account"],
+            description: "Agent set agenda, authenticated caller, and planted seed for potential account review."
+        },
+        be: {
+            score: 0,
+            description: "Agent failed to set agenda, verify/authenticate, or plant seed; or failed to provide reason for info."
+        },
+        possibleScore: 4,
+        weight: 0.04,
+        sectionWeight: 4 / 22,
+        mandatoryForSegmentCompletion: true // Authentication is mandatory for safety
+    },
+
+    // S2: SOLVE (27.0% of total score)
+    {
+        id: 's2_obtain_information_probe_problem',
+        name: 'Obtain Information / Probe the Problem',
+        description: 'Ask effective questions to gather pertinent information and understand customer needs.',
+        section: 'S2',
+        he: {
+            score: 7,
+            wordsThatWork: ["so that i make sure i am taking care of all your needs, can you share", "does this frequently occur", "are there other issues you are experiencing", "could you elaborate on that", "what else have you noticed"],
+            description: "Agent asked effective open/closed-ended questions, engaged customer, and probed for root causes."
+        },
+        me: {
+            score: 4,
+            wordsThatWork: ["what seems to be the problem", "can you describe the issue", "how long has this been happening"],
+            description: "Agent asked effective questions, engaged customer, and ensured effortless process."
+        },
+        be: {
+            score: 0,
+            description: "Agent failed to ask clarifying questions, made assumptions, or made troubleshooting difficult."
+        },
+        possibleScore: 7,
+        weight: 0.07,
+        sectionWeight: 7 / 27,
+        mandatoryForSegmentCompletion: true
+    },
+    {
+        id: 's2_resolve_address_issues',
+        name: 'Resolve / Address Issue(s)',
+        description: 'Explain why problem occurred, provide complete resolution, and educate customer.',
+        section: 'S2',
+        he: {
+            score: 14,
+            wordsThatWork: ["i hope that you don't experience this problem again, but if you do", "to prevent this from happening again, you can"],
+            description: "Agent explained why problem occurred, provided complete resolution, confirmed it, and educated customer on prevention."
+        },
+        me: {
+            score: 7,
+            wordsThatWork: ["the issue was and i've fixed it by", "your service should be working now", "we've resolved that for you"],
+            description: "Agent briefly explained problem basics, provided complete resolution, and used appropriate tools."
+        },
+        be: {
+            score: 0,
+            description: "Agent failed to explain problem, use tools, confirm resolution, or resolved incompletely."
+        },
+        possibleScore: 14,
+        weight: 0.14,
+        sectionWeight: 14 / 27,
+        mandatoryForSegmentCompletion: true // This is the core resolution
+    },
+    {
+        id: 's2_build_value_enhance',
+        name: 'Build Value / Enhance / Promote',
+        description: 'Attempt email capture/confirmation AND build value by sharing features/benefits of existing products/services.',
+        section: 'S2',
+        he: undefined,
+        me: {
+            score: 6,
+            wordsThatWork: ["can i please add an email address to your comcast account", "did you know you can manage your account online", "i'd like to make sure you're getting the most out of your services"],
+            description: "Agent attempted email capture/confirmation AND built value by sharing features/benefits of existing products/services."
+        },
+        be: {
+            score: 0,
+            description: "Agent did not attempt email capture/update, or failed to mention value/benefits."
+        },
+        possibleScore: 6,
+        weight: 0.06,
+        sectionWeight: 6 / 27,
+        mandatoryForSegmentCompletion: false // Not strictly mandatory for problem resolution, but highly encouraged
+    },
+
+    // S3: SELL (20.0% of total score) - Only relevant if scenario has sales opportunity
+    {
+        id: 's3_transition_to_relevant_offer',
+        name: 'Transition to Relevant Offer',
+        description: 'Transition to sales after initial inquiry is satisfied, using bridging statements and probing questions.',
+        section: 'S3',
+        he: {
+            score: 6,
+            wordsThatWork: ["now that we have fixed your remote, i would like to review your account", "since your internet is working well, let's talk about how you can save more", "i noticed you don't have our premium movie channels. would you be interested"],
+            description: "Agent effectively transitioned to sales using bridging statements, linking current services to upgrades, and asking probing questions to discover needs."
+        },
+        me: {
+            score: 3,
+            wordsThatWork: ["now that that's resolved, i can also look for ways to enhance your services", "is there anything else i can help you with today, perhaps looking at new offers"],
+            description: "Agent transitioned to sales after issue, used bridging statements, and tied services to upgrades."
+        },
+        be: {
+            score: 0,
+            description: "Agent transitioned prematurely, failed to transition, or did not use bridging statement."
+        },
+        possibleScore: 6,
+        weight: 0.06,
+        sectionWeight: 6 / 20,
+        mandatoryForSegmentCompletion: true // Mandatory if sales opportunity exists
+    },
+    {
+        id: 's3_present_offer',
+        name: 'Present Offer',
+        description: 'Present recommendation as an expert, discussing how products/services relate to caller\'s needs, with tailored benefits.',
+        section: 'S3',
+        he: {
+            score: 6,
+            wordsThatWork: ["based on what you shared with me about", "i would definitely recommend our high speed internet service for", "considering your streaming habits, our xfinity stream app would be perfect"],
+            description: "Agent presented offer as an expert, clearly linking products to needs, mentioning multiple tailored benefits, and personalizing."
+        },
+        me: {
+            score: 3,
+            wordsThatWork: ["this package offers these benefits", "you'll get x and y for z price"],
+            description: "Agent presented recommendation as expert, sharing benefits and offering value statement."
+        },
+        be: {
+            score: 0,
+            description: "Agent failed to share benefits, or presented only price without value."
+        },
+        possibleScore: 6,
+        weight: 0.06,
+        sectionWeight: 6 / 20,
+        mandatoryForSegmentCompletion: true // Mandatory if sales opportunity exists
+    },
+    {
+        id: 's3_overcome_objections',
+        name: 'Overcome Objections',
+        description: 'Acknowledge objection and tailor attempts to overcome resistance using customer\'s stated needs.',
+        section: 'S3',
+        he: {
+            score: 4,
+            wordsThatWork: ["i understand, it's more than what you are paying today, but you will be able", "i hear your concern about the cost. however, many customers find that the value of"],
+            description: "Agent acknowledged objection and tailored attempts to overcome resistance using stated needs, discussing alternatives effectively."
+        },
+        me: {
+            score: 2,
+            wordsThatWork: ["i understand your concern, but consider", "let me explain why this is a great value"],
+            description: "Agent acknowledged objection and made one or more attempts to overcome resistance."
+        },
+        be: {
+            score: 0,
+            description: "Agent made poor attempt to overcome resistance, or was overly aggressive/argumentative."
+        },
+        possibleScore: 4,
+        weight: 0.04,
+        sectionWeight: 4 / 20,
+        mandatoryForSegmentCompletion: false // Conditional, only if objection is raised
+    },
+    {
+        id: 's3_proactively_ask_for_sale',
+        name: 'Proactively Ask for the Sale',
+        description: 'Ask for the sale using various closing techniques.',
+        section: 'S3',
+        he: undefined,
+        me: {
+            score: 4,
+            wordsThatWork: [
+                "it will take only a few moments to update your services and i can make the change today",
+                "typically our installation times fill up quickly, do you want me to hold an appointment",
+                "sounds like you are looking for the best internet service. would you like our blast! or performance speed",
+                "so why don't i go ahead and set you up with that, when would be a good day to activate your service",
+                "so it sounds like you are looking for a bundle that has great educational channels",
+                "shall i go ahead and add that to your account today"
+            ],
+            description: "Agent asked for the sale using various closing techniques."
+        },
+        be: {
+            score: 0,
+            description: "Agent discussed solutions but did not ask customer to purchase them."
+        },
+        possibleScore: 4,
+        weight: 0.04,
+        sectionWeight: 4 / 20,
+        mandatoryForSegmentCompletion: true // Mandatory if sales opportunity exists
+    },
+
+    // S4: SUMMARIZE (14.0% of total score)
+    {
+        id: 's4_summarize_actions',
+        name: 'Summarize Actions',
+        description: 'Provide a summary of what the customer can expect with sufficient detail to prevent a repeat call.',
+        section: 'S4',
+        he: { // HE defined here, but ME also 7 points. This is unusual but based on the text.
+            score: 7,
+            wordsThatWork: ["let's review what we have you down for", "just to recap, we've done x and you can expect y"],
+            description: "Agent provided clear next steps and thoroughly documented resolution/actions."
+        },
+        me: {
+            score: 7,
+            wordsThatWork: ["so, to summarize", "here's what we covered today", "your next steps are"],
+            description: "Agent summarized customer expectations with sufficient detail to prevent repeat calls."
+        },
+        be: {
+            score: 0,
+            description: "Agent did not recap actions or failed to summarize next steps."
+        },
+        possibleScore: 7,
+        weight: 0.07,
+        sectionWeight: 7 / 14,
+        mandatoryForSegmentCompletion: true
+    },
+    {
+        id: 's4_close_contact',
+        name: 'Close Contact',
+        description: 'Offer additional assistance, clearly demonstrate appreciation, and personalize the closing.',
+        section: 'S4',
+        he: { // HE defined here, but ME also 4 points. This is unusual but based on the text.
+            score: 4,
+            wordsThatWork: [
+                "is there anything else i can assist you with today",
+                "thank you for calling comcast. hope you have a wonderful evening with your granddaughter."
+            ],
+            description: "Agent offered additional assistance, clearly demonstrated appreciation, and personalized closing effectively."
+        },
+        me: {
+            score: 4,
+            wordsThatWork: ["is there anything else", "thanks for calling comcast", "have a great day"],
+            description: "Agent offered additional assistance, expressed appreciation/thanks, and used customized/personalized statement."
+        },
+        be: {
+            score: 0,
+            description: "Agent did not offer assistance, failed to express appreciation, or transferred inappropriately."
+        },
+        possibleScore: 4,
+        weight: 0.04,
+        sectionWeight: 4 / 14,
+        mandatoryForSegmentCompletion: true
+    },
+    {
+        id: 's4_documentation',
+        name: 'Documentation',
+        description: 'Document the account with enough detail to help future agents.',
+        section: 'S4',
+        he: {
+            score: 3,
+            wordsThatWork: ["i am capturing our conversation today on your account so that anyone assisting you will be able to tell what we worked on today", "i've made sure to add detailed notes to your account"],
+            description: "Agent thoroughly documented call reason, resolution, and pertinent info for next agent."
+        },
+        me: {
+            score: 3,
+            wordsThatWork: ["i'll document this on your account", "i'm making a note of our conversation"],
+            description: "Agent documented account with enough detail (Caller Name, Reason, Actions) for future agents."
+        },
+        be: {
+            score: 0,
+            description: "Agent failed to document required information."
+        },
+        possibleScore: 3,
+        weight: 0.03,
+        sectionWeight: 3 / 14,
+        mandatoryForSegmentCompletion: true
+    },
+
+    // Behaviors (17.0% of total score) - These are continuous throughout the call
+    {
+        id: 'b_tone_confidence_clarity',
+        name: 'Tone, Confidence & Clarity',
+        description: 'Maintain a professional, pleasant, upbeat, and energetic tone; speak clearly and match customer tone.',
+        section: 'Behaviors',
+        he: undefined,
+        me: {
+            score: 3,
+            wordsThatWork: [], // Tone is non-verbal, so no direct 'words that work' but examples are implied by behavior
+            description: "Agent consistently used professional, pleasant, upbeat tone; spoke clearly, matched customer tone; explained simply."
+        },
+        be: {
+            score: 0,
+            description: "Agent did not maintain professional tone, spoke abruptly/fast, or gave confusing explanations."
+        },
+        possibleScore: 3,
+        weight: 0.03,
+        sectionWeight: 3 / 17,
+        mandatoryForSegmentCompletion: false
+    },
+    {
+        id: 'b_active_listening',
+        name: 'Active Listening',
+        description: 'Provide frequent indications of active listening and do not intentionally interrupt or talk over the customer.',
+        section: 'Behaviors',
+        he: undefined,
+        me: {
+            score: 3,
+            wordsThatWork: ["i hear you", "okay, i understand", "got it", "i see"],
+            description: "Agent provided frequent indications of active listening and did not interrupt/talk over customer."
+        },
+        be: {
+            score: 0,
+            description: "Agent forced customer to provide info multiple times, or intentionally interrupted."
+        },
+        possibleScore: 3,
+        weight: 0.03,
+        sectionWeight: 3 / 17,
+        mandatoryForSegmentCompletion: false
+    },
+    {
+        id: 'b_contact_management',
+        name: 'Contact Management',
+        description: 'Minimize pauses/dead air, explain holds, and check back frequently.',
+        section: 'Behaviors',
+        he: undefined,
+        me: {
+            score: 3,
+            wordsThatWork: ["please bear with me for a moment", "i'm just pulling up your account", "thanks for holding"],
+            description: "Agent minimized pauses/dead air, explained holds, and checked back frequently if needed."
+        },
+        be: {
+            score: 0,
+            description: "Agent displayed excessive dead air, or hold times negatively impacted flow."
+        },
+        possibleScore: 3,
+        weight: 0.03,
+        sectionWeight: 3 / 17,
+        mandatoryForSegmentCompletion: false
+    },
+    {
+        id: 'b_acknowledge_take_responsibility',
+        name: 'Acknowledge / Take Responsibility',
+        description: 'Maintain expert role, assure customer, use positive word choice, avoid negatives/irritators, present unified front.',
+        section: 'Behaviors',
+        he: undefined,
+        me: {
+            score: 4,
+            wordsThatWork: ["i can certainly assist you", "we will ensure this is resolved", "my apologies for the inconvenience"],
+            description: "Agent maintained expert role, assured customer, used positive word choice, and presented unified front."
+        },
+        be: {
+            score: 0,
+            description: "Agent neglected to assure customer, used negatives/irritators, or placed blame/spoke negatively."
+        },
+        possibleScore: 4,
+        weight: 0.04,
+        sectionWeight: 4 / 17,
+        mandatoryForSegmentCompletion: false
+    },
+    {
+        id: 'b_build_rapport_demonstrate_concern',
+        name: 'Build Rapport / Demonstrate Concern',
+        description: 'Show genuine interest/concern, acknowledge feelings, and personalize interaction.',
+        section: 'Behaviors',
+        he: undefined,
+        me: {
+            score: 4,
+            wordsThatWork: ["that must be very difficult", "i'm sorry to hear you're going through that", "i understand this is a busy time for you"],
+            description: "Agent showed genuine interest/concern, acknowledged feelings, and personalized interaction."
+        },
+        be: {
+            score: 0,
+            description: "Agent neglected to show genuine interest, or failed to acknowledge customer's feelings/situation."
+        },
+        possibleScore: 4,
+        weight: 0.04,
+        sectionWeight: 4 / 17,
+        mandatoryForSegmentCompletion: false
+    },
+];
+
+export const CRITICAL_FAILURE_DETAILS: CriticalFailureDetail[] = [
+    {
+        id: 'sf_s1_authentication',
+        category: 'Section Failure',
+        name: 'Authentication (S1 Failure)',
+        description: 'Failure to perform proper authentication according to National Authentication Policy, resulting in disclosing specific account information to a non-authorized user.',
+        consequence: 'deduct_s1',
+        deductionPoints: 22
+    },
+    {
+        id: 'sf_s2_account_actions',
+        category: 'Section Failure',
+        name: 'Account Actions (S2 Failure)',
+        description: 'Misinforming customer of charges; failure to disclose applicable fees; failure to follow through on promises; failure to escalate supervisor call.',
+        consequence: 'deduct_s2',
+        deductionPoints: 27
+    },
+    {
+        id: 'sf_s4_tpv_process',
+        category: 'Section Failure',
+        name: 'TPV Process (S4 Failure)',
+        description: 'Failure to attempt Third Party Verification (TPV) Process appropriately where required.',
+        consequence: 'overall_zero'
+    },
+    {
+        id: 'af_rudeness_verbal',
+        category: 'Auto-Fail Behavior',
+        name: 'Rudeness (verbal)',
+        description: 'Acting rude, disrespectful, or arguing with the customer; refusal to escalate; profanity/name calling; hanging up on customer; refusal to transfer a call.',
+        consequence: 'overall_zero'
+    },
+    {
+        id: 'af_call_avoidance',
+        category: 'Auto-Fail Behavior',
+        name: 'Call Avoidance',
+        description: 'Failure to answer (not at desk, mute/unplugged); placing customer on hold for personal call; engaging in side conversations; surfing web for personal reasons; working on non-work related materials.',
+        consequence: 'overall_zero'
+    },
+    {
+        id: 'af_inappropriate_transfer',
+        category: 'Auto-Fail Behavior',
+        name: 'Inappropriate Transfer',
+        description: 'Blind Transfer to another CAE or Queue (not cold/warm transfer); advocating for customers to contact other departments (Corporate Escalations, Ask Rick).',
+        consequence: 'overall_zero'
+    }
+];
+
+export class CoachAI {
+    private currentSession: Session | null = null;
+    // Maps criterion ID to the score achieved by the agent for that criterion over the session
+    private criterionScoresAchieved: { [key: string]: number } = {};
+    // Tracks if mandatory criteria for a segment have been met AT LEAST ONCE
+    private mandatoryCriteriaMet: { [key: string]: boolean } = {};
+
+
+    private sectionScores: { S1: number; S2: number; S3: number; S4: number; Behaviors: number; } = {
+        S1: 0, S2: 0, S3: 0, S4: 0, Behaviors: 0
+    };
+    private overallScores: OverallScores = {
+        s1Start: 0, s2Solve: 0, s3Sell: 0, s4Summarize: 0, behaviors: 0,
+        pinnacleScore: 0,
+        fcr: { achieved: false, score: 0 },
+        tsr: { achieved: false, score: 0 },
+        loqItgCompliance: { achieved: false, score: 0 },
+        aht: 0,
+        productKnowledgeCompliance: false,
+        sectionFailures: { s1Authentication: false, s2AccountActions: false, s4TpvProcess: false },
+        autoFailures: { rudeness: false, callAvoidance: false, inappropriateTransfer: false },
+        overallGradeZero: false
+    };
+
+    constructor() {
+        S4_CRITERIA_DETAILS.forEach(criterion => {
+            this.criterionScoresAchieved[criterion.id] = 0;
+            if (criterion.mandatoryForSegmentCompletion) {
+                this.mandatoryCriteriaMet[criterion.id] = false;
+            }
+        });
+    }
+
+    public startSession(session: Session) {
+        this.currentSession = session;
+        S4_CRITERIA_DETAILS.forEach(criterion => {
+            this.criterionScoresAchieved[criterion.id] = 0;
+            if (criterion.mandatoryForSegmentCompletion) {
+                this.mandatoryCriteriaMet[criterion.id] = false;
+            }
+        });
+        this.sectionScores = { S1: 0, S2: 0, S3: 0, S4: 0, Behaviors: 0 };
+        this.overallScores = {
+            s1Start: 0, s2Solve: 0, s3Sell: 0, s4Summarize: 0, behaviors: 0,
+            pinnacleScore: 0,
+            fcr: { achieved: false, score: 0 },
+            tsr: { achieved: false, score: 0 },
+            loqItgCompliance: { achieved: false, score: 0 },
+            aht: 0,
+            productKnowledgeCompliance: false,
+            sectionFailures: { s1Authentication: false, s2AccountActions: false, s4TpvProcess: false },
+            autoFailures: { rudeness: false, callAvoidance: false, inappropriateTransfer: false },
+            overallGradeZero: false
+        };
+    }
+
+    /**
+     * Analyzes the agent's message against S4 criteria relevant to the current segment.
+     * Determines if the segment should advance.
+     * @param agentMessage The agent's latest message.
+     * @param fullSession The current state of the session including chat history.
+     */
+    public analyzeAgentMessage(agentMessage: string, fullSession: Session): CoachAnalysis {
+        if (!this.currentSession) {
+            console.warn("CoachAI: No active session to analyze.");
+            return {
+                timestamp: Date.now(),
+                agentMessage: agentMessage,
+                feedback: [],
+                overallSummary: "No active session for analysis.",
+                currentSectionScores: this.sectionScores,
+                overallSessionScores: this.overallScores
+            };
+        }
+
+        const feedbackItems: FeedbackItem[] = [];
+        const lowerCaseAgentMessage = agentMessage.toLowerCase();
+        let currentMessageSectionScores = { S1: 0, S2: 0, S3: 0, S4: 0, Behaviors: 0 };
+        let analysisSummary = "Agent's performance:";
+        let segmentAdvancedTo: CallSegment | undefined = undefined;
+
+        // 1. Check for Critical Failure Behaviors (highest priority)
+        let foundCriticalFailure = false;
+        for (const failure of CRITICAL_FAILURE_DETAILS) {
+            let triggered = false;
+            if (failure.id === 'af_rudeness_verbal' && (
+                lowerCaseAgentMessage.includes("shut up") ||
+                lowerCaseAgentMessage.includes("don't care") ||
+                lowerCaseAgentMessage.includes("i'm busy") ||
+                lowerCaseAgentMessage.includes("stupid customer")
+            )) {
+                triggered = true;
+                this.overallScores.autoFailures.rudeness = true;
+            }
+            // Add more specific triggers for other critical failures if possible via text analysis.
+            // For 'Call Avoidance' and 'Inappropriate Transfer', these might be set by internal app logic/events, not just message content.
+
+            if (triggered) {
+                this.overallScores.overallGradeZero = true; // Set overall to zero
+                analysisSummary = `CRITICAL FAILURE: ${failure.name} - ${failure.description}. All points for the session are lost.`;
+                feedbackItems.push({
+                    criterionId: failure.id,
+                    type: 'critical_failure',
+                    reasoning: `Detected critical failure: ${failure.description}`,
+                    suggestions: [`This behavior results in an overall grade of zero. Ensure adherence to professional conduct at all times.`]
+                });
+                foundCriticalFailure = true;
+                break; // Stop further analysis if auto-fail
+            }
+        }
+
+        if (foundCriticalFailure) {
+            // If auto-fail, zero out all current scores and return
+            this.overallScores.s1Start = 0;
+            this.overallScores.s2Solve = 0;
+            this.overallScores.s3Sell = 0;
+            this.overallScores.s4Summarize = 0;
+            this.overallScores.behaviors = 0;
+            this.overallScores.pinnacleScore = 0;
+            return {
+                timestamp: Date.now(),
+                agentMessage: agentMessage,
+                feedback: feedbackItems,
+                overallSummary: analysisSummary,
+                currentSectionScores: { S1: 0, S2: 0, S3: 0, S4: 0, Behaviors: 0 },
+                overallSessionScores: this.overallScores
+            };
+        }
+
+        // 2. Evaluate against S4 Criteria relevant to the current segment and continuous behaviors
+        const criteriaToEvaluate = S4_CRITERIA_DETAILS.filter(
+            criterion => criterion.section === fullSession.currentSegment || criterion.section === 'Behaviors'
+        );
+
+        criteriaToEvaluate.forEach(criterion => {
+            let scoreForCriterionThisTurn = 0; // Score earned in this specific message
+            let feedbackType: FeedbackItem['type'] = 'improvement'; // Default to improvement if not met
+            let reasoning = `Not observed or not fully met expectations for "${criterion.name}".`;
+            let suggestions: string[] = [];
+            let examples: string[] = [];
+
+            // Check if the agent's message contains keywords for HE or ME
+            const agentMetHE = criterion.he && criterion.he.wordsThatWork.some(word => lowerCaseAgentMessage.includes(word.toLowerCase()));
+            const agentMetME = criterion.me.wordsThatWork.some(word => lowerCaseAgentMessage.includes(word.toLowerCase()));
+
+            if (agentMetHE) {
+                scoreForCriterionThisTurn = criterion.he!.score;
+                feedbackType = 'positive';
+                reasoning = `Agent demonstrated "Highly Effective" behavior for "${criterion.name}".`;
+                suggestions = [`Keep up the excellent work! ${criterion.he!.description}`];
+                examples = criterion.he!.wordsThatWork;
+            } else if (agentMetME) {
+                scoreForCriterionThisTurn = criterion.me.score;
+                feedbackType = 'positive';
+                reasoning = `Agent "Meets Expectations" for "${criterion.name}".`;
+                suggestions = [`Good job! ${criterion.me.description}`];
+                examples = criterion.me.wordsThatWork;
+                if (criterion.he) {
+                    suggestions.push(`Consider aiming for "Highly Effective" by focusing on: ${criterion.he.description}. Examples: ${criterion.he.wordsThatWork.join(', ')}`);
+                }
+            } else {
+                // If not met, score is 0 (BE)
+                scoreForCriterionThisTurn = criterion.be.score;
+                feedbackType = 'improvement';
+                reasoning = `Agent's message did not meet expectations for "${criterion.name}". ${criterion.be.description}`;
+                suggestions = [`Focus on the "Meets Expectations" criteria: ${criterion.me.description}. Try using phrases like: ${criterion.me.wordsThatWork.join(', ')}.`];
+                if (criterion.he) {
+                    suggestions.push(`For "Highly Effective" performance, consider: ${criterion.he.description}. Examples: ${criterion.he.wordsThatWork.join(', ')}`);
+                }
+            }
+
+            // Update cumulative score for this criterion, taking the highest score if multiple attempts
+            // Or if it's a behavior, allow it to be scored multiple times if applicable to reflect consistency
+            if (criterion.section !== 'Behaviors') {
+                 this.criterionScoresAchieved[criterion.id] = Math.max(this.criterionScoresAchieved[criterion.id], scoreForCriterionThisTurn);
+            } else {
+                 // For behaviors, if criteria are met, add the score. This means behaviors can accrue points over time.
+                 // This is a simplified approach, a more complex one might be a weighted average or a boolean 'met' state.
+                 if (scoreForCriterionThisTurn > 0) {
+                     this.criterionScoresAchieved[criterion.id] = scoreForCriterionThisTurn; // Set to the score achieved in this turn if positive
+                 } else {
+                     // If a behavior is missed, it doesn't mean points is deducted *again* unless it's a specific critical failure.
+                     // But we want to indicate the miss. So we only update if it's a positive score.
+                     // A more advanced system would track continuous adherence.
+                 }
+            }
+            
+            // Mark mandatory criteria as met if any points were scored for it
+            if (criterion.mandatoryForSegmentCompletion && scoreForCriterionThisTurn > 0) {
+                this.mandatoryCriteriaMet[criterion.id] = true;
+            }
+
+
+            // Add to section-specific scores for the current message analysis
+            switch (criterion.section) {
+                case 'S1': currentMessageSectionScores.S1 += scoreForCriterionThisTurn; break;
+                case 'S2': currentMessageSectionScores.S2 += scoreForCriterionThisTurn; break;
+                case 'S3': currentMessageSectionScores.S3 += scoreForCriterionThisTurn; break;
+                case 'S4': currentMessageSectionScores.S4 += scoreForCriterionThisTurn; break;
+                case 'Behaviors': currentMessageSectionScores.Behaviors += scoreForCriterionThisTurn; break;
+            }
+
+            // Add feedback item if there's a score or if it's below expectations
+            if (scoreForCriterionThisTurn > 0 || feedbackType === 'improvement') {
+                feedbackItems.push({
+                    criterionId: criterion.id,
+                    type: feedbackType,
+                    scoreAchieved: scoreForCriterionThisTurn,
+                    maxPossibleScore: criterion.possibleScore,
+                    reasoning: reasoning,
+                    suggestions: suggestions,
+                    examples: examples.length > 0 ? examples : undefined
+                });
+            }
+        });
+
+
+        // 3. Update cumulative session scores based on individual criterion scores
+        this.updateOverallSessionScores();
+
+        // 4. Check for Section Failure Behaviors (can override regular scoring)
+        // These are applied if specific, severe conditions are met.
+        // Example: S1 Authentication Failure (Simplified: if agent mentions sensitive info without explicit auth)
+        if (lowerCaseAgentMessage.includes("social security number") && !fullSession.messages.some(msg => msg.sender === 'agent' && (msg.text.toLowerCase().includes("authenticate") || msg.text.toLowerCase().includes("security purposes")))) {
+            if (!this.overallScores.sectionFailures.s1Authentication) { // Only apply once
+                this.overallScores.sectionFailures.s1Authentication = true;
+                // Deduct points from S1 total if this section failure occurs
+                this.overallScores.s1Start = Math.max(0, this.overallScores.s1Start - (CRITICAL_FAILURE_DETAILS.find(f => f.id === 'sf_s1_authentication')?.deductionPoints || 0));
+                feedbackItems.push({
+                    criterionId: 'sf_s1_authentication',
+                    type: 'critical_failure',
+                    reasoning: CRITICAL_FAILURE_DETAILS.find(f => f.id === 'sf_s1_authentication')?.description || 'Authentication failure detected.',
+                    suggestions: ['Always follow the National Authentication Policy before disclosing or requesting sensitive account information.']
+                });
+            }
+        }
+        // ... more section failure checks based on actual simulation events ...
+
+
+        // 5. Determine Segment Advance
+        let shouldAdvanceSegment = false;
+        const currentSegmentCriteria = S4_CRITERIA_DETAILS.filter(c => c.section === fullSession.currentSegment && c.mandatoryForSegmentCompletion);
+
+        // Check if all mandatory criteria for the current segment are met
+        const allMandatoryMet = currentSegmentCriteria.every(criterion => this.mandatoryCriteriaMet[criterion.id]);
+        
+        // Also check if the agent has tried to address the customer's core expectation for the current segment
+        const customerExpectationMetInSegment = 
+            (fullSession.currentSegment === 'S1' && fullSession.customerEmotionalState.level !== 'frustrated' && fullSession.customerEmotionalState.level !== 'angry' && fullSession.customerExpectation.focus === 'issue_resolution') ||
+            (fullSession.currentSegment === 'S2' && fullSession.customerEmotionalState.level === 'satisfied' && fullSession.customerExpectation.focus === 'call_completion' && this.currentSession?.customerAI?.hasProblemBeenSolved) ||
+            (fullSession.currentSegment === 'S3' && fullSession.scenario.salesOpportunity && (this.currentSession?.customerAI?.hasSalesPitchBeenAttempted || this.currentSession?.customerAI?.hasCallBeenClosed)) || // Sales attempted or accepted
+            (fullSession.currentSegment === 'S4' && this.currentSession?.customerAI?.hasCallBeenClosed); // Call closed
+
+        if (allMandatoryMet && customerExpectationMetInSegment) {
+             shouldAdvanceSegment = true;
+        }
+
+        if (shouldAdvanceSegment) {
+            switch (fullSession.currentSegment) {
+                case 'S1': segmentAdvancedTo = 'S2'; break;
+                case 'S2': segmentAdvancedTo = fullSession.scenario.salesOpportunity ? 'S3' : 'S4'; break; // Go to S3 if sales opportunity, else S4
+                case 'S3': segmentAdvancedTo = 'S4'; break;
+                case 'S4': segmentAdvancedTo = 'Completed'; break;
+                default: break;
+            }
+            if (segmentAdvancedTo) {
+                analysisSummary += ` Segment advanced to ${segmentAdvancedTo}.`;
+            }
+        }
+
+        // 6. Generate overall summary for this analysis point
+        if (feedbackItems.length === 0 && !shouldAdvanceSegment) {
+            analysisSummary += " No specific feedback for this turn.";
+        } else if (feedbackItems.length > 0) {
+            const positiveCount = feedbackItems.filter(f => f.type === 'positive').length;
+            const improvementCount = feedbackItems.filter(f => f.type === 'improvement').length;
+            const criticalCount = feedbackItems.filter(f => f.type === 'critical_failure').length;
+
+            if (criticalCount > 0) {
+                analysisSummary = `Critical issues detected. Please review detailed feedback.`;
+            } else if (positiveCount > improvementCount) {
+                analysisSummary += ` Overall positive interaction with some areas for minor improvement.`;
+            } else if (improvementCount > 0) {
+                analysisSummary += ` Several areas identified for improvement.`;
+            } else {
+                analysisSummary += ` Satisfactory performance.`;
+            }
+        }
+
+        return {
+            timestamp: Date.now(),
+            agentMessage: agentMessage,
+            feedback: feedbackItems,
+            overallSummary: analysisSummary,
+            currentSectionScores: currentMessageSectionScores, // Scores from just this message's analysis
+            overallSessionScores: { ...this.overallScores }, // Clone to avoid mutation
+            segmentAdvancedTo: segmentAdvancedTo
+        };
+    }
+
+    public updateOverallSessionScores(): void {
+        let totalS1 = 0;
+        let totalS2 = 0;
+        let totalS3 = 0;
+        let totalS4 = 0;
+        let totalBehaviors = 0;
+
+        S4_CRITERIA_DETAILS.forEach(criterion => {
+            const score = this.criterionScoresAchieved[criterion.id] || 0;
+            switch (criterion.section) {
+                case 'S1': totalS1 += score; break;
+                case 'S2': totalS2 += score; break;
+                case 'S3': totalS3 += score; break;
+                case 'S4': totalS4 += score; break;
+                case 'Behaviors': totalBehaviors += score; break;
+            }
+        });
+
+        this.overallScores.s1Start = totalS1;
+        this.overallScores.s2Solve = totalS2;
+        this.overallScores.s3Sell = totalS3;
+        this.overallScores.s4Summarize = totalS4;
+        this.overallScores.behaviors = totalBehaviors;
+
+        this.overallScores.pinnacleScore = totalS1 + totalS2 + totalS3 + totalS4 + totalBehaviors;
+
+        // Apply section deductions if applicable
+        if (this.overallScores.sectionFailures.s1Authentication) {
+            this.overallScores.s1Start = Math.max(0, this.overallScores.s1Start - (CRITICAL_FAILURE_DETAILS.find(f => f.id === 'sf_s1_authentication')?.deductionPoints || 0));
+        }
+        if (this.overallScores.sectionFailures.s2AccountActions) {
+            this.overallScores.s2Solve = Math.max(0, this.overallScores.s2Solve - (CRITICAL_FAILURE_DETAILS.find(f => f.id === 'sf_s2_account_actions')?.deductionPoints || 0));
+        }
+        if (this.overallScores.sectionFailures.s4TpvProcess) {
+            this.overallScores.s4Summarize = Math.max(0, this.overallScores.s4Summarize - (CRITICAL_FAILURE_DETAILS.find(f => f.id === 'sf_s4_tpv_process')?.deductionPoints || 0));
+        }
+
+        // If any auto-fail, set overall grade to zero
+        if (this.overallScores.autoFailures.rudeness || this.overallScores.autoFailures.callAvoidance || this.overallScores.autoFailures.inappropriateTransfer) {
+            this.overallScores.overallGradeZero = true;
+            this.overallScores.pinnacleScore = 0; // Zero out pinnacle score as well
+            this.overallScores.s1Start = 0;
+            this.overallScores.s2Solve = 0;
+            this.overallScores.s3Sell = 0;
+            this.overallScores.s4Summarize = 0;
+            this.overallScores.behaviors = 0;
+        }
+
+        // FCR, TSR, LOQ/ITG, AHT, Product Knowledge will need to be calculated based on broader simulation events
+        // For FCR: if problem was resolved and call completed in a reasonable time.
+        if (this.currentSession?.customerEmotionalState.level === 'satisfied' && this.currentSession.status === 'completed') {
+             this.overallScores.fcr.achieved = true;
+             this.overallScores.fcr.score = 80.5; // Example score
+        } else {
+            this.overallScores.fcr.achieved = false;
+            this.overallScores.fcr.score = 0;
+        }
+
+        // For TSR: if a sales opportunity existed and was successfully closed
+        if (this.currentSession?.scenario.salesOpportunity && this.currentSession.customerEmotionalState.level === 'satisfied' && this.currentSession.currentSegment === 'Completed' && this.currentSession?.customerAI?.hasSalesPitchBeenAttempted && this.currentSession?.customerAI?.hasCallBeenClosed) {
+            this.overallScores.tsr.achieved = true;
+            this.overallScores.tsr.score = 90; // Example score
+        } else {
+            this.overallScores.tsr.achieved = false;
+            this.overallScores.tsr.score = 0;
+        }
+
+        // For AHT: Calculated as (endTime - startTime) of the session.
+        if (this.currentSession?.endTime && this.currentSession.startTime) {
+            this.overallScores.aht = (this.currentSession.endTime - this.currentSession.startTime) / 1000; // in seconds
+        } else {
+            this.overallScores.aht = 0;
+        }
+        // Product Knowledge: Assume true for now (e.g., agent has completed training module)
+        this.overallScores.productKnowledgeCompliance = true;
+    }
+
+    public getOverallScores(): OverallScores {
+        return { ...this.overallScores }; // Return a clone
+    }
+
+    // New method to get current segment's status for the coach to assess progression
+    public getSegmentStatus(): { [key: string]: boolean } {
+        return { ...this.mandatoryCriteriaMet }; // Clone
+    }
+
+}
+
+
+// ============================================
+// MAIN APPLICATION LOGIC
+// ============================================
+
+// Scenarios are defined here. Note that the scenario IDs need to match the values in your HTML's select element.
+const scenarios: Scenario[] = [
+    { id: 'billing_dispute', name: 'Billing Inquiry', description: 'Customer calls about a high bill.', customerPersonality: 'demanding_but_fair', initialCustomerMessage: 'My bill is too high this month! I need to understand these charges.', difficulty: 'medium', salesOpportunity: true },
+    { id: 'internet_outage', name: 'Internet Outage', description: 'Customer has no internet service and is frustrated.', customerPersonality: 'confused_and_frustrated', initialCustomerMessage: 'My internet is not working at all! I\'ve tried unplugging the modem like the website said but nothing is working.', difficulty: 'hard', salesOpportunity: false },
+    { id: 'upgrade_inquiry', name: 'Explore New Services', description: 'Customer interested in adding a new TV package to their existing services.', customerPersonality: 'talkative_and_friendly', initialCustomerMessage: 'Hi there! I was thinking about getting more TV channels, do you have any good offers?', difficulty: 'easy', salesOpportunity: true },
+];
+
+
+let appSimulatorInstance: CallSimulator; // Renamed to avoid conflict with `appInstance` in DOMContentLoaded
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Corrected element IDs based on your HTML
+    const chatDisplay = document.getElementById('messagesContainer') as HTMLDivElement; // Matches new HTML ID
+    const coachFeedbackDisplay = document.getElementById('feedbackPanel') as HTMLDivElement; // Matches new HTML ID
+    const currentScoresDisplay = document.getElementById('currentScoresDisplay') as HTMLPreElement; // Still used for raw scores, ensure it exists or remove if not needed. It's not in provided HTML.
+    const currentSegmentDisplay = document.getElementById('currentSegment') as HTMLSpanElement; // Matches new HTML ID
+
+    const voiceButton = document.getElementById('voiceButton') as HTMLButtonElement; // Single voice button
+    const statusIndicator = document.getElementById('statusIndicator') as HTMLDivElement; // Status indicator
+
+    const scenarioSelect = document.getElementById('scenarioSelect') as HTMLSelectElement;
+    // Removed customerPersonalitySelect and agentPersonaSelect as they are not in the provided HTML.
+    // Assuming these are handled by the scenario selection or hardcoded in the scenario data.
+
+
+    // Initialize the main simulator class
+    appSimulatorInstance = new CallSimulator(
+        voiceButton,
+        statusIndicator,
+        chatDisplay,
+        coachFeedbackDisplay,
+        currentScoresDisplay, // Pass this even if it's currently unused in your HTML, for consistency.
+        currentSegmentDisplay
+    );
+    window.app = appSimulatorInstance; // Expose to window for debugging if needed
+
+    // Populate scenario select options
+    scenarios.forEach(scenario => {
+        const option = document.createElement('option');
+        option.value = scenario.id;
+        option.textContent = scenario.name;
+        scenarioSelect.appendChild(option);
+    });
+
+    // Set initial display for scenario (to match the first option or a default one)
+    appSimulatorInstance.updateScenarioDisplay();
+
+    // Initial UI updates for scores and feedback (empty)
+    appSimulatorInstance.updateFeedbackDisplay([]);
+    appSimulatorInstance.updateScoresDisplay({
+        s1Start: 0, s2Solve: 0, s3Sell: 0, s4Summarize: 0, behaviors: 0,
+        pinnacleScore: 0,
+        fcr: { achieved: false, score: 0 },
+        tsr: { achieved: false, score: 0 },
+        loqItgCompliance: { achieved: false, score: 0 },
+        aht: 0,
+        productKnowledgeCompliance: false,
+        sectionFailures: { s1Authentication: false, s2AccountActions: false, s4TpvProcess: false },
+        autoFailures: { rudeness: false, callAvoidance: false, inappropriateTransfer: false },
+        overallGradeZero: false
+    });
+    // Ensure the feedback panel starts hidden as per your HTML
+    if (coachFeedbackDisplay) {
+        coachFeedbackDisplay.style.display = 'none';
+    }
+});
+
+
+export class CallSimulator {
+    private isListening: boolean = false;
+    private isSpeaking: boolean = false;
+    private currentSegment: CallSegment = 'S1';
+    // No longer using Web Speech API's SpeechRecognition
+    private mediaRecorder: MediaRecorder | null = null;
+    private audioChunks: Blob[] = [];
+
+    // No longer using Web Speech API's SpeechSynthesis
+    // private synthesis: SpeechSynthesis; // Removed
+    
+    private currentScenarioId: string = 'billing_dispute'; // Default scenario ID
+    private conversationActive: boolean = false;
+
+    private voiceButton: HTMLButtonElement;
+    private statusIndicator: HTMLDivElement;
+    private messagesContainer: HTMLDivElement;
+    private coachFeedbackDisplayElement: HTMLElement; // From app.ts CoachAI output
+    private currentScoresDisplayElement: HTMLElement; // From app.ts CoachAI output
+    private currentSegmentDisplayElement: HTMLSpanElement; // From app.ts CoachAI output
+    private scenarioSelect: HTMLSelectElement; // Added for scenario change logic
+    private customerTypeEl: HTMLSpanElement; // From index.html
+    private callStatusEl: HTMLSpanElement; // From index.html
+
+    private customerAI: CustomerAI | null = null;
+    private coachAI: CoachAI | null = null;
+    private currentSession: Session | null = null; // Manage the session state
+
+    // Backend API Endpoints (PLACEHOLDERS - YOU NEED TO IMPLEMENT THESE)
+    private readonly STT_API_URL = 'http://localhost:5000/stt'; // Ollama ASR model endpoint
+    private readonly TTS_API_URL = 'http://localhost:5000/tts'; // Ollama TTS model endpoint
+    private readonly ERROR_DIAGNOSIS_API_URL = 'http://localhost:5000/diagnose_error'; // Ollama LLM for error diagnosis
+
+    // Define scenarios matching the HTML select options and app.ts logic
+    private scenarios: { [key: string]: Scenario & { initialMessage: string; personality: CustomerPersonalityType; } } = {
+        billing_dispute: {
+            id: 'billing_dispute',
+            name: "Billing Inquiry",
+            description: "Customer calls about a high bill.",
+            customerPersonality: "demanding_but_fair",
+            initialCustomerMessage: "My bill is too high this month! I need to understand these charges.",
+            difficulty: 'medium',
+            salesOpportunity: true,
+            initialMessage: "Hi, I'm calling because I have a charge on my bill that I don't understand. It's for $15.99 for something called 'Premium Sports Package' but I never signed up for that.",
+            personality: "demanding_but_fair"
+        },
+        internet_outage: {
+            id: 'internet_outage',
+            name: "Internet Outage",
+            description: "Customer has no internet service and is frustrated.",
+            customerPersonality: "confused_and_frustrated",
+            initialCustomerMessage: "My internet is not working at all! I've tried unplugging the modem like the website said but nothing is working.",
+            difficulty: 'hard',
+            salesOpportunity: false,
+            initialMessage: "Hello, my internet has been down since yesterday morning and I work from home. I've tried unplugging the modem like the website said but nothing is working.",
+            personality: "confused_and_frustrated"
+        },
+        upgrade_inquiry: {
+            id: 'upgrade_inquiry',
+            name: "Explore New Services",
+            description: "Customer interested in adding a new TV package to their existing services.",
+            customerPersonality: "talkative_and_friendly",
+            initialCustomerMessage: "Hi there! I was thinking about getting more TV channels, do you have any good offers?",
+            difficulty: 'easy',
+            salesOpportunity: true,
+            initialMessage: "Hi there! I hope you're having a wonderful day. I was wondering if you could help me understand what new services Comcast has available. My neighbor just got some amazing new channels.",
+            personality: "talkative_and_friendly"
+        }
+    };
+
+    constructor(
+        voiceButton: HTMLButtonElement,
+        statusIndicator: HTMLDivElement,
+        messagesContainer: HTMLDivElement,
+        coachFeedbackDisplayElement: HTMLElement,
+        currentScoresDisplayElement: HTMLElement,
+        currentSegmentDisplayElement: HTMLSpanElement
+    ) {
+        this.voiceButton = voiceButton;
+        this.statusIndicator = statusIndicator;
+        this.messagesContainer = messagesContainer;
+        this.coachFeedbackDisplayElement = coachFeedbackDisplayElement;
+        this.currentScoresDisplayElement = currentScoresDisplayElement;
+        this.currentSegmentDisplayElement = currentSegmentDisplayElement;
+
+        this.scenarioSelect = document.getElementById('scenarioSelect') as HTMLSelectElement;
+        this.customerTypeEl = document.getElementById('customerType') as HTMLSpanElement;
+        this.callStatusEl = document.getElementById('callStatus') as HTMLSpanElement;
+
+        // No longer relying on window.speechSynthesis directly for speaking
+        // this.synthesis = window.speechSynthesis; // Removed
+
+        this.setupEventListeners();
+        this.registerServiceWorker(); // PWA functionality
+        this.setupErrorMonitoring(); // New: Error Monitoring
+        this.updateUI(); // Set initial UI state
+    }
+
+    private setupErrorMonitoring() {
+        window.onerror = (message, source, lineno, colno, error) => {
+            console.error("Global Error Caught:", { message, source, lineno, colno, error });
+            this.sendErrorToBackend({
+                type: 'unhandled_error',
+                message: message instanceof Event ? message.type : String(message),
+                source: source || 'unknown',
+                lineno: lineno || 0,
+                colno: colno || 0,
+                stack: error ? error.stack : 'no stack available',
+                userAgent: navigator.userAgent,
+                currentSession: this.currentSession ? {
+                    id: this.currentSession.id,
+                    currentSegment: this.currentSession.currentSegment,
+                    lastAgentMessage: this.currentSession.messages.findLast(m => m.sender === 'agent')?.text,
+                    lastCustomerMessage: this.currentSession.messages.findLast(m => m.sender === 'customer')?.text,
+                } : null
+            });
+            // Return true to prevent the default browser error handling
+            return true;
+        };
+
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error("Unhandled Promise Rejection:", event.reason);
+            this.sendErrorToBackend({
+                type: 'unhandled_rejection',
+                message: event.reason instanceof Error ? event.reason.message : String(event.reason),
+                stack: event.reason instanceof Error ? event.reason.stack : 'no stack available',
+                userAgent: navigator.userAgent,
+                currentSession: this.currentSession ? {
+                    id: this.currentSession.id,
+                    currentSegment: this.currentSession.currentSegment,
+                    lastAgentMessage: this.currentSession.messages.findLast(m => m.sender === 'agent')?.text,
+                    lastCustomerMessage: this.currentSession.messages.findLast(m => m.sender === 'customer')?.text,
+                } : null
+            });
+        });
+    }
+
+    private async sendErrorToBackend(errorDetails: any) {
+        try {
+            this.showMessage('system', `🚨 Detected a potential issue. Sending details for diagnosis...`, 'system-message warning-message');
+            const response = await fetch(this.ERROR_DIAGNOSIS_API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(errorDetails),
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const diagnosis = data.diagnosis || 'No specific diagnosis provided by backend.';
+                const suggestion = data.suggestion || 'Please try refreshing the page.';
+                this.showMessage('system', `**Error Diagnosis:** ${diagnosis}\n**Suggestion:** ${suggestion}`, 'system-message error-message');
+                // You could offer a button here to refresh the page automatically
+                // Example: this.showRefreshButton();
+            } else {
+                console.error('Failed to send error to backend:', response.status, response.statusText);
+                this.showMessage('system', `Failed to send error details for diagnosis. Status: ${response.status}.`, 'system-message error-message');
+            }
+        } catch (error) {
+            console.error('Error during error diagnosis API call:', error);
+            this.showMessage('system', `An error occurred while diagnosing the issue: ${error instanceof Error ? error.message : String(error)}.`, 'system-message error-message');
+        }
+    }
+
+    setupEventListeners() {
+        this.voiceButton.addEventListener('click', () => {
+            if (!this.conversationActive) {
+                this.startNewSession(); // Start a new session on first click
+            } else if (this.isListening) {
+                this.stopListening(); // Stop listening if already active
+            } else if (!this.isSpeaking && this.currentSession?.status === 'active') {
+                this.startListening(); // Start listening if idle and conversation active
+            }
+        });
+
+        this.scenarioSelect.addEventListener('change', (e) => {
+            this.currentScenarioId = (e.target as HTMLSelectElement).value;
+            this.updateScenarioDisplay();
+            this.resetSimulator(); // Reset the whole simulator state on scenario change
+        });
+    }
+
+    async registerServiceWorker() {
+        if ('serviceWorker' in navigator) {
+            try {
+                // Create a simple service worker inline
+                const swCode = `
+                    self.addEventListener('install', (e) => {
+                        self.skipWaiting();
+                    });
+                    
+                    self.addEventListener('activate', (e) => {
+                        e.waitUntil(clients.claim());
+                    });
+                    
+                    self.addEventListener('fetch', (e) => {
+                        // Let network handle all requests
+                        e.respondWith(fetch(e.request));
+                    });
+                `;
+                
+                const blob = new Blob([swCode], { type: 'application/javascript' });
+                const swURL = URL.createObjectURL(blob);
+                
+                await navigator.serviceWorker.register(swURL);
+                console.log('Service Worker registered');
+            } catch (error) {
+                console.log('Service Worker registration failed:', error);
+            }
+        }
+    }
+
+    resetSimulator() {
+        this.stopListening();
+        // If there's an ongoing TTS audio, stop it
+        // This would be handled by a client-side audio player that consumes backend TTS.
+        // For simplicity, we assume stopping recording is sufficient for resetting.
+
+        this.conversationActive = false;
+        this.isListening = false;
+        this.isSpeaking = false;
+        this.currentSegment = 'S1';
+        this.messagesContainer.innerHTML = ''; // Clear chat messages
+        this.coachFeedbackDisplayElement.innerHTML = ''; // Clear feedback
+        this.coachFeedbackDisplayElement.style.display = 'none'; // Hide feedback panel
+        this.updateScoresDisplay({
+            s1Start: 0, s2Solve: 0, s3Sell: 0, s4Summarize: 0, behaviors: 0,
+            pinnacleScore: 0,
+            fcr: { achieved: false, score: 0 },
+            tsr: { achieved: false, score: 0 },
+            loqItgCompliance: { achieved: false, score: 0 },
+            aht: 0,
+            productKnowledgeCompliance: false,
+            sectionFailures: { s1Authentication: false, s2AccountActions: false, s4TpvProcess: false },
+            autoFailures: { rudeness: false, callAvoidance: false, inappropriateTransfer: false },
+            overallGradeZero: false
+        });
+        this.updateScenarioDisplay(); // Update scenario details
+        this.callStatusEl.textContent = 'Ready to Start';
+        this.currentSession = null;
+        this.customerAI = null;
+        this.coachAI = null;
+        this.updateUI(); // Set UI to initial state
+        this.showMessage('system', 'Simulator reset. Select a scenario and tap the microphone to begin!', 'system-message');
+    }
+
+    startNewSession() {
+        this.resetSimulator(); // Ensure a clean slate
+
+        const selectedScenario = this.scenarios[this.currentScenarioId];
+        if (!selectedScenario) {
+            this.showMessage('system', 'Error: Selected scenario not found.', 'system-message');
+            return;
+        }
+
+        this.currentSession = {
+            id: `session-${Date.now()}`,
+            scenarioId: selectedScenario.id,
+            startTime: Date.now(),
+            messages: [],
+            chatHistory: [],
+            customerEmotionalState: { level: 'neutral' },
+            customerExpectation: { focus: 'issue_resolution', priority: 'high' },
+            scores: {
+                s1Start: 0, s2Solve: 0, s3Sell: 0, s4Summarize: 0, behaviors: 0,
+                pinnacleScore: 0, fcr: { achieved: false, score: 0 }, tsr: { achieved: false, score: 0 },
+                loqItgCompliance: { achieved: false, score: 0 }, aht: 0, productKnowledgeCompliance: false,
+                sectionFailures: { s1Authentication: false, s2AccountActions: false, s4TpvProcess: false },
+                autoFailures: { rudeness: false, callAvoidance: false, inappropriateTransfer: false },
+                overallGradeZero: false
+            },
+            coachAnalysis: [],
+            status: 'active',
+            currentSegment: 'S1',
+            scenario: selectedScenario
+        };
+
+        this.customerAI = new CustomerAI(selectedScenario.customerPersonality, selectedScenario.initialCustomerMessage);
+        this.coachAI = new CoachAI();
+        this.coachAI.startSession(this.currentSession);
+
+        this.conversationActive = true;
+        this.callStatusEl.textContent = 'Active Call';
+        this.currentSegmentDisplayElement.textContent = 'S1 (Start)';
+
+        // Start with customer's initial message
+        this.showMessage('customer', selectedScenario.initialMessage);
+        this.customerAI.addMessage({ sender: 'customer', text: selectedScenario.initialMessage, timestamp: Date.now() });
+
+        this.speakMessage(selectedScenario.initialMessage, () => {
+            // After customer speaks, start listening for agent
+            setTimeout(() => {
+                this.startListening();
+            }, 500); // Small delay before agent can speak
+        });
+
+        this.showMessage('system', `New session started with "${selectedScenario.name}". Customer type: "${selectedScenario.customerPersonality.replace(/_/g, ' ')}".`, 'system-message');
+        this.updateUI();
+    }
+
+    async handleAgentMessage(message: string) {
+        if (!this.conversationActive || !this.currentSession || this.currentSession.status !== 'active') {
+            this.showMessage('system', 'Session not active. Please start a new session.', 'system-message');
+            return;
+        }
+        
+        // Stop any recording that might still be running from previous "no-speech" errors before processing
+        if (this.isListening) {
+             this.stopListening();
+        }
+
+        const agentMessage: Message = {
+            sender: 'agent',
+            text: message,
+            timestamp: Date.now()
+        };
+        this.currentSession.messages.push(agentMessage);
+        this.customerAI?.addMessage(agentMessage);
+        this.showMessage('agent', message);
+        this.updateUI(); // Update UI to reflect agent speaking/processing state
+
+        // Get Coach Feedback
+        if (this.coachAI && this.currentSession) {
+            const coachAnalysis = this.coachAI.analyzeAgentMessage(message, this.currentSession);
+            this.currentSession.coachAnalysis.push(coachAnalysis);
+            this.updateFeedbackDisplay(coachAnalysis.feedback);
+            this.updateScoresDisplay(this.coachAI.getOverallScores());
+
+            if (coachAnalysis.segmentAdvancedTo) {
+                this.currentSession.currentSegment = coachAnalysis.segmentAdvancedTo;
+                this.currentSegmentDisplayElement.textContent = `${coachAnalysis.segmentAdvancedTo} (${this.getSegmentName(coachAnalysis.segmentAdvancedTo)})`;
+                this.showMessage('system', `**Segment Advanced to: ${coachAnalysis.segmentAdvancedTo}**`, 'system-message');
+                this.coachAI.startSession(this.currentSession); // Re-initialize coach for new segment tracking
+            }
+        }
+
+        // Get Customer Response
+        if (this.customerAI && this.currentSession) {
+            this.showTypingIndicator('customer'); // Show typing indicator while customer AI thinks
+            const customerResponse = await this.customerAI.generateContextualResponse(message, this.currentSession.currentSegment, this.currentSession.scenario);
+            this.hideTypingIndicator(); // Hide typing indicator
+            const customerMessage: Message = {
+                sender: 'customer',
+                text: customerResponse,
+                timestamp: Date.now()
+            };
+            this.currentSession.messages.push(customerMessage);
+            this.customerAI.addMessage(customerMessage);
+            this.showMessage('customer', customerResponse);
+            await this.speakMessage(customerResponse, () => {
+                // After customer speech, check session status and restart listening if needed
+                this.checkSessionStatusAndContinue();
+            });
+        } else {
+            // If for some reason CustomerAI is not ready, still check session status
+            this.checkSessionStatusAndContinue();
+        }
+    }
+
+    private checkSessionStatusAndContinue() {
+        if (!this.currentSession) return;
+
+        if (this.currentSession.currentSegment === 'Completed') {
+            this.endSession('completed');
+        } else if (this.currentSession.scores?.overallGradeZero) {
+            this.endSession('failed');
+        } else if (this.currentSession.status === 'active') {
+            // If session is still active and not completed/failed, restart listening for agent's turn
+            setTimeout(() => {
+                this.startListening();
+            }, 500); // Small delay before reactivating microphone
+        }
+    }
+
+    private endSession(status: 'completed' | 'failed') {
+        if (!this.currentSession) return;
+
+        this.currentSession.endTime = Date.now();
+        this.currentSession.status = status;
+        this.conversationActive = false;
+        this.stopListening();
+        // If there's an ongoing TTS audio, stop it
+        // this.synthesis.cancel(); // Removed
+
+        this.updateUI(); // Update UI to reflect session end
+
+        this.coachAI?.updateOverallSessionScores(); // Final score calculation
+        this.updateScoresDisplay(this.coachAI!.getOverallScores());
+
+        const message = status === 'completed' ?
+            'Session Completed! Check coach feedback and final scores.' :
+            'Session Failed due to Critical Failure! Review coach feedback.';
+        const bgColor = status === 'completed' ? '#4CAF50' : '#f44336';
+
+        this.showMessage('system', message, 'system-message');
+        this.showCustomAlert(message, bgColor);
+        this.callStatusEl.textContent = status === 'completed' ? 'Completed' : 'Failed';
+        
+        // Hide the feedback panel initially and show it only at the end.
+        this.coachFeedbackDisplayElement.style.display = 'block';
+    }
+
+    async speakMessage(text: string, callback?: () => void) {
+        this.isSpeaking = true;
+        this.updateUI();
+
+        try {
+            const response = await fetch(this.TTS_API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ text: text }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`TTS API error: ${response.statusText}`);
+            }
+
+            // Assuming the backend returns an audio file (e.g., WAV, MP3)
+            const audioBlob = await response.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+
+            audio.onended = () => {
+                this.isSpeaking = false;
+                this.updateUI();
+                URL.revokeObjectURL(audioUrl); // Clean up the object URL
+                if (callback) callback();
+            };
+
+            audio.onerror = (e) => {
+                console.error('Audio playback error:', e);
+                this.showMessage('system', 'Audio playback error.', 'system-message error-message');
+                this.isSpeaking = false;
+                this.updateUI();
+                URL.revokeObjectURL(audioUrl);
+                if (callback) callback();
+            };
+
+            audio.play();
+
+        } catch (error) {
+            console.error('Error during TTS API call or audio playback:', error);
+            this.showMessage('system', `Speech output error: ${error instanceof Error ? error.message : String(error)}.`, 'system-message error-message');
+            this.isSpeaking = false;
+            this.updateUI();
+            if (callback) callback();
+        }
+    }
+
+    async startListening() {
+        if (!this.conversationActive || !this.currentSession || this.currentSession.status !== 'active') {
+            this.showMessage('system', 'Cannot start microphone: Session not active. Click the microphone to start a new session.', 'system-message');
+            return;
+        }
+        if (this.isSpeaking) {
+            this.showMessage('system', 'Cannot start microphone: Customer is speaking.', 'system-message');
+            return;
+        }
+        if (this.isListening) {
+            this.showMessage('system', 'Microphone is already on.', 'system-message');
+            return;
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this.mediaRecorder = new MediaRecorder(stream);
+            this.audioChunks = [];
+
+            this.mediaRecorder.ondataavailable = (event) => {
+                this.audioChunks.push(event.data);
+            };
+
+            this.mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' }); // Assuming WAV for simplicity
+                this.audioChunks = []; // Clear for next recording
+
+                this.isListening = false;
+                this.updateUI();
+                this.showTypingIndicator('agent'); // Show indicator while processing STT
+
+                try {
+                    const formData = new FormData();
+                    formData.append('audio', audioBlob, 'audio.wav'); // 'audio' is the field name your backend expects
+
+                    const response = await fetch(this.STT_API_URL, {
+                        method: 'POST',
+                        body: formData,
+                        // No 'Content-Type' header needed for FormData
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`STT API error: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+                    const transcript = data.text || ''; // Assuming backend returns { text: "..." }
+
+                    this.hideTypingIndicator(); // Hide indicator after STT
+                    if (transcript) {
+                        this.handleAgentMessage(transcript);
+                    } else {
+                        this.showMessage('system', 'Speech recognition error: No speech detected or processed.', 'system-message warning-message');
+                        // If no speech, still attempt to restart listening for agent's turn
+                        if (this.conversationActive && !this.isSpeaking && this.currentSession?.status === 'active') {
+                             setTimeout(() => {
+                                 this.startListening();
+                             }, 500);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error during STT API call:', error);
+                    this.hideTypingIndicator(); // Hide indicator on error
+                    this.showMessage('system', `Speech recognition failed: ${error instanceof Error ? error.message : String(error)}.`, 'system-message error-message');
+                    // If STT fails, still attempt to restart listening for agent's turn
+                    if (this.conversationActive && !this.isSpeaking && this.currentSession?.status === 'active') {
+                         setTimeout(() => {
+                             this.startListening();
+                         }, 500);
+                    }
+                } finally {
+                    stream.getTracks().forEach(track => track.stop()); // Stop the microphone stream
+                }
+            };
+
+            this.mediaRecorder.start();
+            this.isListening = true;
+            this.updateUI();
+            this.showMessage('system', '🗣️ Microphone is on. Please speak your response.', 'system-message');
+
+        } catch (error) {
+            console.error('Error accessing microphone:', error);
+            this.showMessage('system', `Error accessing microphone: ${error instanceof Error ? error.message : String(error)}. Please ensure microphone permissions are granted.`, 'system-message error-message');
+            this.isListening = false;
+            this.updateUI();
+        }
+    }
+
+    stopListening() {
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            this.mediaRecorder.stop();
+            this.isListening = false;
+            this.updateUI();
+            this.showMessage('system', 'Microphone off.', 'system-message');
+        }
+    }
+
+    showMessage(sender: 'agent' | 'customer' | 'system', text: string, className: string = '') {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message-bubble ${sender} ${className}`;
+        
+        const avatar = document.createElement('div');
+        avatar.className = `avatar ${sender}`;
+        avatar.textContent = sender === 'agent' ? 'A' : sender === 'customer' ? 'C' : 'S';
+        
+        const content = document.createElement('div');
+        content.className = `message-content ${sender}`;
+        content.textContent = text;
+        
+        messageDiv.appendChild(avatar);
+        messageDiv.appendChild(content);
+
+        this.messagesContainer.appendChild(messageDiv);
+        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight; // Scroll to bottom
+    }
+
+    showTypingIndicator(sender: 'customer' | 'agent') {
+        // Ensure only one typing indicator at a time
+        if (document.getElementById('typingIndicator')) {
+            return;
+        }
+
+        const typingDiv = document.createElement('div');
+        typingDiv.id = 'typingIndicator';
+        typingDiv.className = `message-bubble ${sender} typing-indicator`;
+
+        const avatar = document.createElement('div');
+        avatar.className = `avatar ${sender}`;
+        avatar.textContent = sender === 'agent' ? 'A' : 'C';
+
+        const dotsContainer = document.createElement('div');
+        dotsContainer.style.display = 'flex';
+        dotsContainer.style.gap = '4px';
+
+        for (let i = 0; i < 3; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'typing-dot';
+            dotsContainer.appendChild(dot);
+        }
+        
+        typingDiv.appendChild(avatar);
+        typingDiv.appendChild(dotsContainer);
+        
+        this.messagesContainer.appendChild(typingDiv);
+        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    }
+
+    hideTypingIndicator() {
+        const typingDiv = document.getElementById('typingIndicator');
+        if (typingDiv) {
+            typingDiv.remove();
+        }
+    }
+
+    updateUI() {
+        // Update voice button state
+        if (!this.mediaRecorder && !('mediaDevices' in navigator)) { // If microphone access is generally not supported
+            this.voiceButton.disabled = true;
+            this.voiceButton.classList.remove('listening', 'speaking', 'idle');
+            this.statusIndicator.textContent = 'Microphone Not Supported';
+            this.statusIndicator.classList.remove('listening', 'speaking', 'idle', 'processing');
+            return;
+        }
+
+        if (!this.conversationActive) {
+            this.voiceButton.classList.remove('listening', 'speaking');
+            this.voiceButton.classList.add('idle');
+            this.voiceButton.disabled = false;
+            this.statusIndicator.textContent = 'Tap to start conversation';
+            this.statusIndicator.classList.remove('listening', 'speaking', 'processing');
+            this.statusIndicator.classList.add('idle');
+        } else if (this.isSpeaking) {
+            this.voiceButton.classList.remove('listening', 'idle');
+            this.voiceButton.classList.add('speaking');
+            this.voiceButton.disabled = true; // Disable agent input when customer is speaking
+            this.statusIndicator.textContent = 'Customer Speaking...';
+            this.statusIndicator.classList.remove('listening', 'idle', 'processing');
+            this.statusIndicator.classList.add('speaking');
+            this.hideTypingIndicator(); // Ensure typing indicator is hidden when customer speaks
+        } else if (this.isListening) {
+            this.voiceButton.classList.remove('speaking', 'idle');
+            this.voiceButton.classList.add('listening');
+            this.voiceButton.disabled = false;
+            this.statusIndicator.textContent = 'Listening...';
+            this.statusIndicator.classList.remove('speaking', 'idle', 'processing');
+            this.statusIndicator.classList.add('listening');
+        } else { // Idle during an active conversation, waiting for agent to speak or customer to speak again
+            this.voiceButton.classList.remove('listening', 'speaking');
+            this.voiceButton.classList.add('idle');
+            this.voiceButton.disabled = false; // Agent can initiate speech or type
+            this.statusIndicator.textContent = 'Ready for your response';
+            this.statusIndicator.classList.remove('listening', 'speaking', 'processing');
+            this.statusIndicator.classList.add('idle');
+        }
+    }
+
+    updateScenarioDisplay() {
+        const scenario = this.scenarios[this.currentScenarioId];
+        if (scenario) {
+            this.currentSegmentDisplayElement.textContent = 'S1 - Start'; // Always reset to S1 when scenario changes
+            this.customerTypeEl.textContent = scenario.customerPersonality.replace(/_/g, ' ');
+        }
+    }
+
+    updateFeedbackDisplay(feedback: FeedbackItem[]) {
+        this.coachFeedbackDisplayElement.innerHTML = '';
+        this.coachFeedbackDisplayElement.style.display = 'block'; // Show feedback panel when there's feedback
+
+        if (feedback.length === 0) {
+            this.coachFeedbackDisplayElement.innerHTML = '<p>No specific feedback for this turn yet.</p>';
+            return;
+        }
+
+        feedback.forEach(item => {
+            const feedbackItemDiv = document.createElement('div');
+            feedbackItemDiv.className = `feedback-item ${item.type}-feedback`;
+
+            const criterion = S4_CRITERIA_DETAILS.find(c => c.id === item.criterionId);
+            const criterionName = criterion ? criterion.name : item.criterionId;
+
+            let scoreInfo = '';
+            if (item.scoreAchieved !== undefined && item.maxPossibleScore !== undefined) {
+                scoreInfo = `(${item.scoreAchieved}/${item.maxPossibleScore} points)`;
+            }
+
+            feedbackItemDiv.innerHTML = `
+                <h4>${criterionName} ${scoreInfo} <span>${item.type.replace('_', ' ').toUpperCase()}</span></h4>
+                <p><strong>Reasoning:</strong> ${item.reasoning}</p>
+            `;
+            if (item.suggestions && item.suggestions.length > 0) {
+                feedbackItemDiv.innerHTML += `
+                    <p><strong>Suggestions:</strong></p>
+                    <ul>${item.suggestions.map(s => `<li>${s}</li>`).join('')}</ul>
+                `;
+            }
+            if (item.examples && item.examples.length > 0) {
+                feedbackItemDiv.innerHTML += `
+                    <p><strong>Examples (Words that Work):</strong></p>
+                    <ul>${item.examples.map(e => `<li>"${e}"</li>`).join('')}</ul>
+                `;
+            }
+            this.coachFeedbackDisplayElement.appendChild(feedbackItemDiv);
+        });
+        this.coachFeedbackDisplayElement.scrollTop = this.coachFeedbackDisplayElement.scrollHeight; // Scroll to bottom
+    }
+
+    updateScoresDisplay(scores: OverallScores) {
+        // Assuming currentScoresDisplayElement is a <pre> or similar for displaying JSON
+        // If it's not needed or rendered differently, this can be removed or adjusted.
+        if (this.currentScoresDisplayElement) {
+            this.currentScoresDisplayElement.textContent = JSON.stringify(scores, null, 2);
+        } else {
+            console.warn('currentScoresDisplayElement not found. Scores will not be displayed.');
+        }
+    }
+
+    private getSegmentName(segmentId: CallSegment): string {
+        switch (segmentId) {
+            case 'S1': return 'Start';
+            case 'S2': return 'Solve';
+            case 'S3': return 'Sell';
+            case 'S4': return 'Summarize';
+            case 'Completed': return 'Call Completed';
+            default: return '';
+        }
+    }
+
+    private showCustomAlert(message: string, bgColor: string) {
+        const customAlert = document.createElement('div');
+        customAlert.textContent = message;
+        customAlert.style.cssText = `
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background-color: ${bgColor}; color: white; padding: 20px; border-radius: 8px; z-index: 1000;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5); text-align: center; font-weight: bold;
+        `;
+        document.body.appendChild(customAlert);
+        setTimeout(() => customAlert.remove(), 5000); // Remove after 5 seconds
+    }
+}
